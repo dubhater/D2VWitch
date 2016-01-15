@@ -336,8 +336,10 @@ bool D2V::engage() {
         // Apparently we might receive packets from streams with AVDISCARD_ALL set,
         // and also from streams discovered late, probably.
         if (packet.stream_index != video_stream->index &&
-            !audio_files.count(packet.stream_index))
+            !audio_files.count(packet.stream_index)) {
+            av_free_packet(&packet);
             continue;
+        }
 
         bool okay = true;
 
@@ -346,8 +348,10 @@ bool D2V::engage() {
         else
             okay = handleAudioPacket(&packet);
 
-        if (!okay)
+        if (!okay) {
+            av_free_packet(&packet);
             return false;
+        }
 
         av_free_packet(&packet);
     }
