@@ -42,7 +42,7 @@ void D2V::clearDataLine() {
 
 
 bool D2V::isDataLineNull() const {
-    return !line.flags.size();
+    return !(line.flags.size() && (line.info & INFO_BIT11));
 }
 
 
@@ -51,8 +51,8 @@ void D2V::reorderDataLineFlags() {
         return;
 
     for (size_t i = 1; i < line.flags.size(); i++) {
-        if ((line.flags[i - 1] & D2V_FLAGS_B_PICTURE) != D2V_FLAGS_B_PICTURE &&
-                (line.flags[i] & D2V_FLAGS_B_PICTURE) == D2V_FLAGS_B_PICTURE)
+        if ((line.flags[i - 1] & FLAGS_B_PICTURE) != FLAGS_B_PICTURE &&
+                (line.flags[i] & FLAGS_B_PICTURE) == FLAGS_B_PICTURE)
             std::swap(line.flags[i - 1], line.flags[i]);
     }
 }
@@ -84,7 +84,7 @@ bool D2V::printSettings() {
     int video_id = video_stream->id;
     int audio_id = 0;
     int64_t ts_packetsize;
-    if (stream_type == D2V_STREAM_TRANSPORT) {
+    if (stream_type == TRANSPORT_STREAM) {
         const AVStream *audio_stream = nullptr;
         for (unsigned i = 0; i < f->fctx->nb_streams; i++) {
             if (f->fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
@@ -122,7 +122,7 @@ bool D2V::printSettings() {
     std::string settings;
 
     settings += "Stream_Type=" + std::to_string(stream_type) + "\n";
-    if (stream_type == D2V_STREAM_TRANSPORT) {
+    if (stream_type == TRANSPORT_STREAM) {
         char pids[100] = { 0 };
         snprintf(pids, 100, "%x,%x,%x", video_id, audio_id, 0);
         settings += "MPEG2_Transport_PID=";
@@ -176,27 +176,18 @@ bool D2V::printDataLine() {
 
 
 bool D2V::handleVideoPacket(AVPacket *packet) {
-    uint8_t *output_buffer;
-    int output_buffer_size;
-
-    while (packet->size) {
-        int parsed_bytes = av_parser_parse2(f->parser, f->avctx, &output_buffer, &output_buffer_size,
-                                            packet->data, packet->size, packet->pts, packet->dts, packet->pos);
-
-        packet->data += parsed_bytes;
-        packet->size -= parsed_bytes;
-    }
+    parser.parseData(packet->data, packet->size);
 
     uint8_t flags = 0;
 
-    if (!f->parser->width || !f->parser->height) {
+    if (parser.width <= 0 || parser.height <= 0) {
         if (log_message)
-            log_message("Encountered frame with invalid dimensions " + std::to_string(f->parser->width) + "x" + std::to_string(f->parser->height) + ".");
+            log_message("Skipping frame with invalid dimensions " + std::to_string(parser.width) + "x" + std::to_string(parser.height) + ".");
 
         return true;
     }
 
-    if (f->parser->pict_type == AV_PICTURE_TYPE_I) {
+    if (parser.picture_coding_type == MPEGParser::I_PICTURE) {
         if (!isDataLineNull()) {
             reorderDataLineFlags();
             if (!printDataLine())
@@ -204,70 +195,71 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
             clearDataLine();
         }
 
-        line.info = D2V_INFO_BIT11 | D2V_INFO_STARTS_NEW_GOP | D2V_INFO_CLOSED_GOP;
+        line.info = INFO_BIT11;
+        if (parser.progressive_sequence)
+            line.info |= INFO_PROGRESSIVE_SEQUENCE;
 
-        int64_t colorspace;
-        // Pointless, it's always AVCOL_SPC_UNSPECIFIED.
-        if (av_opt_get_int(f->avctx, "colorspace", 0, &colorspace) < 0)
-            colorspace = AVCOL_SPC_UNSPECIFIED;
-        line.matrix = colorspace;
+        if (parser.group_of_pictures_header) {
+            line.info |= INFO_STARTS_NEW_GOP;
 
-        line.file = fake_file->getFileIndex(f->parser->pos);
-        line.position = fake_file->getPositionInRealFile(f->parser->pos);
+            if (parser.closed_gop)
+                line.info |= INFO_CLOSED_GOP;
+        }
 
-        flags = D2V_FLAGS_I_PICTURE | D2V_FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
+        line.matrix = parser.matrix_coefficients;
+
+        line.file = fake_file->getFileIndex(packet->pos);
+        line.position = fake_file->getPositionInRealFile(packet->pos);
+
+        flags = FLAGS_I_PICTURE | FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
 
         if (progress_report)
             progress_report(packet->pos, fake_file->getTotalSize());
-    } else if (f->parser->pict_type == AV_PICTURE_TYPE_P) {
-        flags = D2V_FLAGS_P_PICTURE | D2V_FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
-    } else if (f->parser->pict_type == AV_PICTURE_TYPE_B) {
-        flags = D2V_FLAGS_B_PICTURE;
+    } else if (parser.picture_coding_type == MPEGParser::P_PICTURE) {
+        flags = FLAGS_P_PICTURE | FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
+    } else if (parser.picture_coding_type == MPEGParser::B_PICTURE) {
+        flags = FLAGS_B_PICTURE;
 
         int reference_pictures = 0;
         for (auto it = line.flags.cbegin(); it != line.flags.cend(); it++) {
-            uint8_t frame_type = *it & D2V_FLAGS_B_PICTURE;
+            uint8_t frame_type = *it & FLAGS_B_PICTURE;
 
-            if (frame_type == D2V_FLAGS_I_PICTURE || frame_type == D2V_FLAGS_P_PICTURE)
+            if (frame_type == FLAGS_I_PICTURE || frame_type == FLAGS_P_PICTURE)
                 reference_pictures++;
         }
+
 
         // av_read_frame returns *frames*, so this works fine even when picture_structure is "field",
         // i.e. when the pictures in the mpeg2 stream are individual fields.
         if (reference_pictures >= 2) {
-            flags |= D2V_FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
+            flags |= FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
         } else {
-            line.info &= ~D2V_INFO_CLOSED_GOP;
+            line.info &= ~INFO_CLOSED_GOP;
         }
     } else {
         if (log_message)
-            log_message(std::string("Encountered unknown picture type ") +  av_get_picture_type_char((AVPictureType)f->parser->pict_type) + " (" + std::to_string(f->parser->pict_type) + ").");
+            log_message("Skipping unknown picture type " + std::to_string(parser.picture_coding_type) + ".");
 
         return true;
     }
 
-    if (f->parser->repeat_pict == PARSER_MAGIC_RFF_3_FIELDS ||
-        f->parser->repeat_pict == PARSER_MAGIC_RFF_2_FRAMES ||
-        f->parser->repeat_pict == PARSER_MAGIC_RFF_3_FRAMES) {
-        flags |= D2V_FLAGS_RFF;
-        flags |= D2V_FLAGS_PROGRESSIVE;
-    }
+    if (parser.repeat_first_field)
+        flags |= FLAGS_RFF;
 
-    if (f->parser->field_order == AV_FIELD_TT ||
-        f->parser->repeat_pict == PARSER_MAGIC_RFF_3_FRAMES)
-        flags |= D2V_FLAGS_TFF;
+    if (parser.top_field_first)
+        flags |= FLAGS_TFF;
 
-    if (f->parser->field_order == AV_FIELD_PROGRESSIVE)
-        flags |= D2V_FLAGS_PROGRESSIVE;
+    if ((line.info & INFO_PROGRESSIVE_SEQUENCE) || parser.progressive_frame)
+        flags |= FLAGS_PROGRESSIVE;
 
     line.flags.push_back(flags);
 
     stats.video_frames++;
-    if (flags & D2V_FLAGS_PROGRESSIVE)
+    if (flags & FLAGS_PROGRESSIVE)
         stats.progressive_frames++;
-    if (flags & D2V_FLAGS_TFF)
+    if (flags & FLAGS_TFF)
         stats.tff_frames++;
-    if (flags & D2V_FLAGS_RFF)
+    if (flags & FLAGS_RFF)
         stats.rff_frames++;
 
     return true;

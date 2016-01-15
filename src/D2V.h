@@ -33,74 +33,21 @@ extern "C" {
 
 #include "FakeFile.h"
 #include "FFMPEG.h"
-
-
-// Magic numbers assigned to AVCodecParserContext::repeat_pict in libavcodec/mpegvideo_parser.c.
-enum ParserMagicRepeatPict {
-    PARSER_MAGIC_NO_REPEAT0 = 0,
-    PARSER_MAGIC_NO_REPEAT1 = 1,
-    PARSER_MAGIC_RFF_3_FIELDS = 2, // make 3 fields out of 1 progressive frame
-    PARSER_MAGIC_RFF_2_FRAMES = 3, // make 2 frames out of 1 progressive frame
-    PARSER_MAGIC_RFF_3_FRAMES = 5  // make 3 frames out of 1 progressive frame
-};
-
-
-enum D2VStreamTypes {
-    D2V_STREAM_UNSUPPORTED = -1,
-    D2V_STREAM_ELEMENTARY = 0,
-    D2V_STREAM_PROGRAM = 1,
-    D2V_STREAM_TRANSPORT = 2,
-    D2V_STREAM_PVA = 3
-};
-
-
-// 12 bits
-enum D2VInfoField {
-    D2V_INFO_BIT11 = (1 << 11),
-    D2V_INFO_CLOSED_GOP = (1 << 10),
-    D2V_INFO_PROGRESSIVE_SEQUENCE = (1 << 9),
-    D2V_INFO_STARTS_NEW_GOP = (1 << 8)
-    // The rest are reserved (0).
-};
-
-
-// 8 bits
-enum D2VFlagsField {
-    D2V_FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP = (1 << 7),
-    D2V_FLAGS_PROGRESSIVE = (1 << 6),
-    D2V_FLAGS_P_PICTURE = (1 << 5),
-    D2V_FLAGS_I_PICTURE = (1 << 4),
-    D2V_FLAGS_B_PICTURE = (3 << 4),
-    // Reserved (0).
-    // Reserved (0).
-    D2V_FLAGS_TFF = (1 << 1),
-    D2V_FLAGS_RFF = 1
-};
-
-
-static int getStreamType(const char *name) {
-    std::unordered_map<std::string, int> stream_types_map = {
-        { "mpegvideo", D2V_STREAM_ELEMENTARY },
-        { "mpeg", D2V_STREAM_PROGRAM },
-        { "mpegts", D2V_STREAM_TRANSPORT },
-        { "pva", D2V_STREAM_PVA }
-    };
-
-    int stream_type;
-
-    try {
-        stream_type = stream_types_map.at(name);
-    } catch (std::out_of_range &) {
-        stream_type = D2V_STREAM_UNSUPPORTED;
-    }
-
-    return stream_type;
-}
+#include "MPEGParser.h"
 
 
 class D2V {
 
 public:
+    enum StreamTypes {
+        UNSUPPORTED_STREAM = -1,
+        ELEMENTARY_STREAM = 0,
+        PROGRAM_STREAM = 1,
+        TRANSPORT_STREAM = 2,
+        PVA_STREAM = 3
+    };
+
+
     typedef void (*ProgressFunction)(int64_t current_position, int64_t total_size);
     typedef void (*LoggingFunction)(const std::string &message);
 
@@ -127,6 +74,30 @@ public:
     bool engage();
 
 private:
+    // 12 bits
+    enum InfoField {
+        INFO_BIT11 = (1 << 11),
+        INFO_CLOSED_GOP = (1 << 10),
+        INFO_PROGRESSIVE_SEQUENCE = (1 << 9),
+        INFO_STARTS_NEW_GOP = (1 << 8)
+        // The rest are reserved (0).
+    };
+
+
+    // 8 bits
+    enum FlagsField {
+        FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP = (1 << 7),
+        FLAGS_PROGRESSIVE = (1 << 6),
+        FLAGS_P_PICTURE = (1 << 5),
+        FLAGS_I_PICTURE = (1 << 4),
+        FLAGS_B_PICTURE = (3 << 4),
+        // Reserved (0).
+        // Reserved (0).
+        FLAGS_TFF = (1 << 1),
+        FLAGS_RFF = 1
+    };
+
+
     struct DataLine {
         int info;
         int matrix;
@@ -157,6 +128,8 @@ private:
     ProgressFunction progress_report;
     LoggingFunction log_message;
 
+    MPEGParser parser;
+
     DataLine line;
 
     Stats stats;
@@ -184,5 +157,24 @@ private:
 };
 
 
-#endif // D2V_WITCH_D2V_H
+static int getStreamType(const char *name) {
+    std::unordered_map<std::string, int> stream_types_map = {
+        { "mpegvideo", D2V::ELEMENTARY_STREAM },
+        { "mpeg", D2V::PROGRAM_STREAM },
+        { "mpegts", D2V::TRANSPORT_STREAM },
+        { "pva", D2V::PVA_STREAM }
+    };
 
+    int stream_type;
+
+    try {
+        stream_type = stream_types_map.at(name);
+    } catch (std::out_of_range &) {
+        stream_type = D2V::UNSUPPORTED_STREAM;
+    }
+
+    return stream_type;
+}
+
+
+#endif // D2V_WITCH_D2V_H

@@ -26,7 +26,6 @@ FFMPEG::FFMPEG()
     , fctx(nullptr)
     , avcodec(nullptr)
     , avctx(nullptr)
-    , parser(nullptr)
 { }
 
 
@@ -107,25 +106,11 @@ bool FFMPEG::initCodec(AVCodecID video_codec_id) {
         return false;
     }
 
-    parser = av_parser_init(video_codec_id);
-    if (!parser) {
-        error = "Couldn't allocate AVCodecParserContext.";
-        return false;
-    }
-
-    // Needed for correct pos and pict_type fields.
-    parser->flags = PARSER_FLAG_COMPLETE_FRAMES;
-
     return true;
 }
 
 
 void FFMPEG::cleanup() {
-    if (parser) {
-        av_parser_close(parser);
-        parser = nullptr;
-    }
-
     if (avctx) {
         avcodec_close(avctx);
         avcodec_free_context(&avctx);

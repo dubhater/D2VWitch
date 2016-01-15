@@ -14,7 +14,9 @@ D2VWitch_SOURCES = src/Bullshit.h \
 				   src/FakeFile.cpp \
 				   src/FakeFile.h \
 				   src/FFMPEG.cpp \
-				   src/FFMPEG.h
+				   src/FFMPEG.h \
+				   src/MPEGParser.cpp \
+				   src/MPEGParser.h
 
 D2VWitch_LDFLAGS = $(UNICODELDFLAGS)
 

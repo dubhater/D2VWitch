@@ -506,7 +506,7 @@ int main(int argc, char **argv) {
 
 
     // container format check
-    if (getStreamType(f.fctx->iformat->name) == D2V_STREAM_UNSUPPORTED) {
+    if (getStreamType(f.fctx->iformat->name) == D2V::UNSUPPORTED_STREAM) {
         fprintf(stderr, "Unsupported container type '%s'.\n", f.fctx->iformat->long_name ? f.fctx->iformat->long_name : f.fctx->iformat->name);
 
         f.cleanup();
@@ -577,17 +577,6 @@ int main(int argc, char **argv) {
             type = desc->long_name ? desc->long_name : desc->name;
 
         fprintf(stderr, "Unsupported video codec: %s (id: %d)\n", type, video_stream->codec->codec_id);
-
-        f.cleanup();
-        fake_file.close();
-
-        return 1;
-    }
-
-
-    // ffmpeg init part 2
-    if (!f.initCodec(video_stream->codec->codec_id)) {
-        fprintf(stderr, "%s\n", f.getError().c_str());
 
         f.cleanup();
         fake_file.close();
@@ -685,7 +674,7 @@ int main(int argc, char **argv) {
         const D2V::Stats &stats = d2v.getStats();
         fprintf(stderr,
                 "Video frames seen:   %d\n"
-                "    Progressive:     %d (possibly inaccurate)\n"
+                "    Progressive:     %d\n"
                 "    Top field first: %d\n"
                 "    Repeat:          %d\n",
                 stats.video_frames,

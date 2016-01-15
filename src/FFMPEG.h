@@ -41,7 +41,6 @@ public:
     AVFormatContext *fctx;
     AVCodec *avcodec;
     AVCodecContext *avctx;
-    AVCodecParserContext *parser;
 
     FFMPEG();
     ~FFMPEG();
