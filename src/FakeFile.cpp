@@ -162,7 +162,7 @@ int64_t FakeFile::seek(void *opaque, int64_t offset, int whence) {
     }
 
     ff->current_position = offset;
-    return 0;
+    return ff->current_position;
 }
 
 
