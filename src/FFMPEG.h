@@ -23,6 +23,7 @@ SOFTWARE.
 
 
 #include <string>
+#include <unordered_map>
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -41,6 +42,7 @@ public:
     AVFormatContext *fctx;
     AVCodec *avcodec;
     AVCodecContext *avctx;
+    std::unordered_map<int, AVCodecContext *> audio_ctx;
 
     FFMPEG();
     ~FFMPEG();
@@ -49,10 +51,18 @@ public:
 
     bool initFormat(FakeFile &fake_file);
 
-    bool initCodec(AVCodecID video_codec_id);
+    bool initVideoCodec(AVCodecID video_codec_id);
+
+    bool initAudioCodecs();
 
     void cleanup();
 };
+
+
+static inline bool codecIDRequiresWave64(AVCodecID codec_id) {
+    return codec_id == AV_CODEC_ID_PCM_BLURAY ||
+           codec_id == AV_CODEC_ID_PCM_DVD;
+}
 
 
 #endif // D2V_WITCH_FFMPEG_H

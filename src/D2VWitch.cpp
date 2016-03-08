@@ -416,6 +416,26 @@ struct CommandLine {
 };
 
 
+void closeAudioFiles(D2V::AudioFilesMap &audio_files, const AVFormatContext *fctx) {
+    for (unsigned i = 0; i < fctx->nb_streams; i++) {
+        try {
+            void *pointer = audio_files.at(fctx->streams[i]->index);
+
+            if (codecIDRequiresWave64(fctx->streams[i]->codec->codec_id)) {
+                AVFormatContext *w64_ctx = (AVFormatContext *)pointer;
+
+                av_write_trailer(w64_ctx);
+                avformat_free_context(w64_ctx);
+            } else {
+                fclose((FILE *)pointer);
+            }
+        } catch (std::out_of_range &) {
+
+        }
+    }
+}
+
+
 #ifdef _WIN32
 BOOL WINAPI HandlerRoutine(DWORD dwCtrlType) {
     switch (dwCtrlType) {
@@ -606,7 +626,7 @@ int main(int argc, char **argv) {
 
 
     // audio files opening
-    std::unordered_map<int, FILE *> audio_files;
+    D2V::AudioFilesMap audio_files;
     for (unsigned i = 0; i < f.fctx->nb_streams; i++) {
         if (f.fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO &&
             f.fctx->streams[i]->discard != AVDISCARD_ALL) {
@@ -632,19 +652,114 @@ int main(int argc, char **argv) {
 
             path += ".audio";
 
-            FILE *file = openFile(path.c_str(), "wb");
-            if (!file) {
-                fprintf(stderr, "Failed to open audio file '%s' for writing: %s\n", path.c_str(), strerror(errno));
+            if (codecIDRequiresWave64(f.fctx->streams[i]->codec->codec_id)) {
+#define ERROR_SIZE 512
+                char error[ERROR_SIZE] = { 0 };
 
-                for (auto it = audio_files.begin(); it != audio_files.end(); it++)
-                    fclose(it->second);
-                f.cleanup();
-                fake_file.close();
+                AVFormatContext *w64_ctx = nullptr;
+                int ret = avformat_alloc_output_context2(&w64_ctx, nullptr, "w64", path.c_str());
+                if (ret < 0) {
+                    av_strerror(ret, error, ERROR_SIZE);
+                    fprintf(stderr, "Failed to allocate AVFormatContext for muxing the audio file '%s': %s\n", path.c_str(), error);
 
-                return 1;
+                    closeAudioFiles(audio_files, f.fctx);
+                    f.cleanup();
+                    fake_file.close();
+
+                    return 1;
+                }
+
+                ret = avio_open2(&w64_ctx->pb, path.c_str(), AVIO_FLAG_WRITE, nullptr, nullptr);
+                if (ret < 0) {
+                    av_strerror(ret, error, ERROR_SIZE);
+                    fprintf(stderr, "Failed to open AVIOContext for audio file '%s': %s\n", path.c_str(), error);
+
+                    closeAudioFiles(audio_files, f.fctx);
+                    avformat_free_context(w64_ctx);
+                    f.cleanup();
+                    fake_file.close();
+
+                    return 1;
+                }
+
+                AVCodecContext *in_ctx = f.fctx->streams[i]->codec;
+                AVCodecID codec_id = av_get_pcm_codec(in_ctx->sample_fmt, 0);
+
+                AVCodec *pcm_codec = avcodec_find_encoder(codec_id);
+                if (!pcm_codec) {
+                    fprintf(stderr, "Failed to find encoder for codec id %d.\n", f.fctx->streams[i]->codec->codec_id);
+
+                    closeAudioFiles(audio_files, f.fctx);
+                    avformat_free_context(w64_ctx);
+                    f.cleanup();
+                    fake_file.close();
+
+                    return 1;
+                }
+
+                if (!avformat_new_stream(w64_ctx, pcm_codec)) {
+                    fprintf(stderr, "Failed to create new AVStream.\n");
+
+                    closeAudioFiles(audio_files, f.fctx);
+                    avformat_free_context(w64_ctx);
+                    f.cleanup();
+                    fake_file.close();
+
+                    return 1;
+                }
+
+                AVCodecContext *out_ctx = w64_ctx->streams[0]->codec;
+                out_ctx->codec_type = AVMEDIA_TYPE_AUDIO;
+                out_ctx->codec_id = codec_id;
+                out_ctx->codec_tag = 0x0001;
+                out_ctx->sample_rate = in_ctx->sample_rate;
+                out_ctx->channels = in_ctx->channels;
+                out_ctx->sample_fmt = in_ctx->sample_fmt;
+                out_ctx->channel_layout = in_ctx->channel_layout;
+
+                ret = avformat_write_header(w64_ctx, nullptr);
+                if (ret < 0) {
+                    av_strerror(ret, error, ERROR_SIZE);
+#undef ERROR_SIZE
+                    fprintf(stderr, "Failed to write Wave64 header to file '%s': %s\n", path.c_str(), error);
+
+                    closeAudioFiles(audio_files, f.fctx);
+                    avformat_free_context(w64_ctx);
+                    f.cleanup();
+                    fake_file.close();
+
+                    return 1;
+                }
+
+                audio_files.insert({ f.fctx->streams[i]->index, w64_ctx });
+            } else {
+                FILE *file = openFile(path.c_str(), "wb");
+                if (!file) {
+                    fprintf(stderr, "Failed to open audio file '%s' for writing: %s\n", path.c_str(), strerror(errno));
+
+                    closeAudioFiles(audio_files, f.fctx);
+                    f.cleanup();
+                    fake_file.close();
+
+                    return 1;
+                }
+
+                audio_files.insert({ f.fctx->streams[i]->index, file });
             }
+        }
+    }
 
-            audio_files.insert({ f.fctx->streams[i]->index, file });
+
+    // ffmpeg init part 2: audio decoders
+    if (audio_files.size()) {
+        if (!f.initAudioCodecs()) {
+            fprintf(stderr, "%s\n", f.getError().c_str());
+
+            closeAudioFiles(audio_files, f.fctx);
+            f.cleanup();
+            fake_file.close();
+
+            return 1;
         }
     }
 
@@ -662,8 +777,7 @@ int main(int argc, char **argv) {
     if (!d2v.engage()) {
         fprintf(stderr, "%s\n", d2v.getError().c_str());
 
-        for (auto it = audio_files.begin(); it != audio_files.end(); it++)
-            fclose(it->second);
+        closeAudioFiles(audio_files, f.fctx);
         f.cleanup();
         fake_file.close();
 
@@ -685,8 +799,7 @@ int main(int argc, char **argv) {
 
 
     // some cleanup
-    for (auto it = audio_files.begin(); it != audio_files.end(); it++)
-        fclose(it->second);
+    closeAudioFiles(audio_files, f.fctx);
     fclose(d2v_file);
     f.cleanup();
     fake_file.close();

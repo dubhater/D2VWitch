@@ -267,16 +267,56 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
 
 
 bool D2V::handleAudioPacket(AVPacket *packet) {
-    FILE *file = audio_files.at(packet->stream_index);
+    if (codecIDRequiresWave64(f->fctx->streams[packet->stream_index]->codec->codec_id)) {
+        AVFormatContext *w64_ctx = (AVFormatContext *)audio_files.at(packet->stream_index);
 
-    if (fwrite(packet->data, 1, packet->size, file) < (size_t)packet->size) {
-        char id[20] = { 0 };
-        snprintf(id, 19, "%x", f->fctx->streams[packet->stream_index]->id);
-        error = "Failed to write audio packet from stream id ";
-        error += id;
-        error += ": fwrite() failed.";
+        AVPacket pkt_in = *packet;
 
-        return false;
+        AVFrame *frame = av_frame_alloc();
+
+        while (pkt_in.size) {
+            int got_frame = 0;
+
+            AVCodecContext *codec = f->audio_ctx.at(pkt_in.stream_index);
+
+            // We ignore got_frame because pcm_bluray and pcm_dvd decoders don't have any delay.
+            int ret = avcodec_decode_audio4(codec, frame, &got_frame, &pkt_in);
+            if (ret < 0) {
+                char id[20] = { 0 };
+                snprintf(id, 19, "%x", f->fctx->streams[pkt_in.stream_index]->id);
+                error = "Failed to decode audio packet from stream id ";
+                error += id;
+                error += ".";
+
+                return false;
+            }
+
+            pkt_in.data += ret;
+            pkt_in.size -= ret;
+
+            AVPacket pkt_out;
+            pkt_out.data = frame->data[0];
+            pkt_out.size = frame->nb_samples * frame->channels * av_get_bytes_per_sample((AVSampleFormat)frame->format);
+            pkt_out.stream_index = 0;
+            pkt_out.pts = 0;
+            pkt_out.dts = 0;
+
+            av_write_frame(w64_ctx, &pkt_out);
+        };
+
+        av_frame_free(&frame);
+    } else { // Not PCM, just dump it.
+        FILE *file = (FILE *)audio_files.at(packet->stream_index);
+
+        if (fwrite(packet->data, 1, packet->size, file) < (size_t)packet->size) {
+            char id[20] = { 0 };
+            snprintf(id, 19, "%x", f->fctx->streams[packet->stream_index]->id);
+            error = "Failed to write audio packet from stream id ";
+            error += id;
+            error += ": fwrite() failed.";
+
+            return false;
+        }
     }
 
     return true;
@@ -293,7 +333,7 @@ bool D2V::printStreamEnd() {
 }
 
 
-D2V::D2V(FILE *_d2v_file, const std::unordered_map<int, FILE *> &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, ProgressFunction _progress_report, LoggingFunction _log_message)
+D2V::D2V(FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, ProgressFunction _progress_report, LoggingFunction _log_message)
     : d2v_file(_d2v_file)
     , audio_files(_audio_files)
     , fake_file(_fake_file)

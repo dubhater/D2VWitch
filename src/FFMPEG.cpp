@@ -87,7 +87,7 @@ bool FFMPEG::initFormat(FakeFile &fake_file) {
 }
 
 
-bool FFMPEG::initCodec(AVCodecID video_codec_id) {
+bool FFMPEG::initVideoCodec(AVCodecID video_codec_id) {
     avcodec = avcodec_find_decoder(video_codec_id);
     if (!avcodec) {
         error = "Couldn't find decoder for ";
@@ -97,13 +97,47 @@ bool FFMPEG::initCodec(AVCodecID video_codec_id) {
 
     avctx = avcodec_alloc_context3(avcodec);
     if (!avctx) {
-        error = "Couldn't allocate AVCodecContext.";
+        error = "Couldn't allocate AVCodecContext for the video decoder.";
         return false;
     }
 
     if (avcodec_open2(avctx, avcodec, nullptr) < 0) {
-        error = "Couldn't open AVCodecContext.";
+        error = "Couldn't open AVCodecContext for the video decoder.";
         return false;
+    }
+
+    return true;
+}
+
+
+bool FFMPEG::initAudioCodecs() {
+    for (unsigned i = 0; i < fctx->nb_streams; i++) {
+        if (codecIDRequiresWave64(fctx->streams[i]->codec->codec_id)) {
+            AVCodecContext *ctx = avcodec_alloc_context3(nullptr);
+            if (!ctx) {
+                error = "Couldn't allocate AVCodecContext for an audio decoder.";
+                return false;
+            }
+
+            if (avcodec_copy_context(ctx, fctx->streams[i]->codec) < 0) {
+                error = "Couldn't copy AVCodecContext for an audio decoder.";
+                return false;
+            }
+
+            AVCodec *audio_decoder = avcodec_find_decoder(fctx->streams[i]->codec->codec_id);
+            if (!audio_decoder) {
+                error = "Couldn't find decoder for ";
+                error += avcodec_get_name(fctx->streams[i]->codec->codec_id);
+                return false;
+            }
+
+            if (avcodec_open2(ctx, audio_decoder, nullptr) < 0) {
+                error = "Couldn't open AVCodecContext for an audio decoder.";
+                return false;
+            }
+
+            audio_ctx.insert({ fctx->streams[i]->index, ctx });
+        }
     }
 
     return true;
@@ -119,4 +153,10 @@ void FFMPEG::cleanup() {
 
     if (fctx)
         avformat_close_input(&fctx);
+
+
+    for (auto it = audio_ctx.begin(); it != audio_ctx.end(); it++) {
+        avcodec_close(it->second);
+        avcodec_free_context(&it->second);
+    }
 }

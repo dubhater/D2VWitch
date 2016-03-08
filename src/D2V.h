@@ -50,6 +50,7 @@ public:
 
     typedef void (*ProgressFunction)(int64_t current_position, int64_t total_size);
     typedef void (*LoggingFunction)(const std::string &message);
+    typedef std::unordered_map<int, void *> AudioFilesMap;
 
     struct Stats {
         int video_frames;
@@ -65,7 +66,7 @@ public:
         { }
     };
 
-    D2V(FILE *_d2v_file, const std::unordered_map<int, FILE *> &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, ProgressFunction _progress_report, LoggingFunction _log_message);
+    D2V(FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, ProgressFunction _progress_report, LoggingFunction _log_message);
 
     const Stats &getStats() const;
 
@@ -121,7 +122,7 @@ private:
     };
 
     FILE *d2v_file;
-    std::unordered_map<int, FILE *> audio_files;
+    AudioFilesMap audio_files;
     FakeFile* fake_file;
     FFMPEG *f;
     AVStream *video_stream;
