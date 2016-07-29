@@ -47,9 +47,15 @@ public:
         PVA_STREAM = 3
     };
 
+    enum ProcessingResult {
+        ProcessingFinished,
+        ProcessingCancelled,
+        ProcessingError
+    };
 
-    typedef void (*ProgressFunction)(int64_t current_position, int64_t total_size);
-    typedef void (*LoggingFunction)(const std::string &message);
+
+    typedef void (*ProgressFunction)(int64_t current_position, int64_t total_size, void *progress_data);
+    typedef void (*LoggingFunction)(const std::string &message, void *log_data);
     typedef std::unordered_map<int, void *> AudioFilesMap;
 
     struct Stats {
@@ -66,13 +72,35 @@ public:
         { }
     };
 
-    D2V(FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, ProgressFunction _progress_report, LoggingFunction _log_message);
+    D2V();
+
+    D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, ProgressFunction _progress_report, void *_progress_data, LoggingFunction _log_message, void *_log_data);
+
+    const std::string &getD2VFileName() const;
 
     const Stats &getStats() const;
 
     const std::string &getError() const;
 
-    bool engage();
+    void index();
+
+    void demuxVideo(FILE *video_file, int64_t start_gop_position, int64_t end_gop_position);
+
+    ProcessingResult getResult();
+
+    int getGOPStartFrame(int frame);
+    int getNextGOPStartFrame(int frame);
+
+    int64_t getGOPStartPosition(int frame);
+    int64_t getNextGOPStartPosition(int frame);
+
+    bool isOpenGOP(int frame);
+
+    int getNumFrames();
+
+    static int getStreamType(const char *name);
+
+    static bool isSupportedVideoCodecID(AVCodecID id);
 
 private:
     // 12 bits
@@ -121,13 +149,16 @@ private:
         { }
     };
 
+    std::string d2v_file_name;
     FILE *d2v_file;
     AudioFilesMap audio_files;
     FakeFile* fake_file;
     FFMPEG *f;
     AVStream *video_stream;
     ProgressFunction progress_report;
+    void *progress_data;
     LoggingFunction log_message;
+    void *log_data;
 
     MPEGParser parser;
 
@@ -136,6 +167,10 @@ private:
     Stats stats;
 
     std::string error;
+
+    ProcessingResult result;
+
+    std::vector<DataLine> lines;
 
 
     void clearDataLine();
@@ -148,7 +183,7 @@ private:
 
     bool printSettings();
 
-    bool printDataLine();
+    bool printDataLine(const DataLine &data_line);
 
     bool handleVideoPacket(AVPacket *packet);
 
@@ -156,26 +191,6 @@ private:
 
     bool printStreamEnd();
 };
-
-
-static int getStreamType(const char *name) {
-    std::unordered_map<std::string, int> stream_types_map = {
-        { "mpegvideo", D2V::ELEMENTARY_STREAM },
-        { "mpeg", D2V::PROGRAM_STREAM },
-        { "mpegts", D2V::TRANSPORT_STREAM },
-        { "pva", D2V::PVA_STREAM }
-    };
-
-    int stream_type;
-
-    try {
-        stream_type = stream_types_map.at(name);
-    } catch (std::out_of_range &) {
-        stream_type = D2V::UNSUPPORTED_STREAM;
-    }
-
-    return stream_type;
-}
 
 
 #endif // D2V_WITCH_D2V_H

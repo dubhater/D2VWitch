@@ -18,7 +18,9 @@ SOFTWARE.
 */
 
 
+#include <atomic>
 #include <cinttypes>
+#include <unordered_set>
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -26,6 +28,7 @@ extern "C" {
 #include <libavutil/opt.h>
 }
 
+#include "Audio.h"
 #include "D2V.h"
 
 
@@ -83,7 +86,7 @@ bool D2V::printSettings() {
 
     int video_id = video_stream->id;
     int audio_id = 0;
-    int64_t ts_packetsize;
+    int64_t ts_packetsize = 0;
     if (stream_type == TRANSPORT_STREAM) {
         const AVStream *audio_stream = nullptr;
         for (unsigned i = 0; i < f->fctx->nb_streams; i++) {
@@ -151,20 +154,20 @@ bool D2V::printSettings() {
 }
 
 
-bool D2V::printDataLine() {
+bool D2V::printDataLine(const D2V::DataLine &data_line) {
     if (fprintf(d2v_file, "\n%x %d %d %" PRId64 " %d %d %d",
-                line.info,
-                line.matrix,
-                line.file,
-                line.position,
-                line.skip,
-                line.vob,
-                line.cell) < 0) {
+                data_line.info,
+                data_line.matrix,
+                data_line.file,
+                data_line.position,
+                data_line.skip,
+                data_line.vob,
+                data_line.cell) < 0) {
         error = "Failed to print d2v data line: fprintf() failed.";
         return false;
     }
 
-    for (auto it = line.flags.cbegin(); it != line.flags.cend(); it++) {
+    for (auto it = data_line.flags.cbegin(); it != data_line.flags.cend(); it++) {
         if (fprintf(d2v_file, " %x", (int)*it) < 0) {
             error = "Failed to print d2v data line: fprintf() failed.";
             return false;
@@ -182,7 +185,7 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
 
     if (parser.width <= 0 || parser.height <= 0) {
         if (log_message)
-            log_message("Skipping frame with invalid dimensions " + std::to_string(parser.width) + "x" + std::to_string(parser.height) + ".");
+            log_message("Skipping frame with invalid dimensions " + std::to_string(parser.width) + "x" + std::to_string(parser.height) + ".", log_data);
 
         return true;
     }
@@ -190,8 +193,7 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
     if (parser.picture_coding_type == MPEGParser::I_PICTURE) {
         if (!isDataLineNull()) {
             reorderDataLineFlags();
-            if (!printDataLine())
-                return false;
+            lines.push_back(line);
             clearDataLine();
         }
 
@@ -214,7 +216,7 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
         flags = FLAGS_I_PICTURE | FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
 
         if (progress_report)
-            progress_report(packet->pos, fake_file->getTotalSize());
+            progress_report(packet->pos, fake_file->getTotalSize(), progress_data);
     } else if (parser.picture_coding_type == MPEGParser::P_PICTURE) {
         flags = FLAGS_P_PICTURE | FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
     } else if (parser.picture_coding_type == MPEGParser::B_PICTURE) {
@@ -238,7 +240,7 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
         }
     } else {
         if (log_message)
-            log_message("Skipping unknown picture type " + std::to_string(parser.picture_coding_type) + ".");
+            log_message("Skipping unknown picture type " + std::to_string(parser.picture_coding_type) + ".", log_data);
 
         return true;
     }
@@ -333,15 +335,28 @@ bool D2V::printStreamEnd() {
 }
 
 
-D2V::D2V(FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, ProgressFunction _progress_report, LoggingFunction _log_message)
-    : d2v_file(_d2v_file)
+D2V::D2V() {
+
+}
+
+
+D2V::D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, ProgressFunction _progress_report, void *_progress_data, LoggingFunction _log_message, void *_log_data)
+    : d2v_file_name(_d2v_file_name)
+    , d2v_file(_d2v_file)
     , audio_files(_audio_files)
     , fake_file(_fake_file)
     , f(_f)
     , video_stream(_video_stream)
     , progress_report(_progress_report)
+    , progress_data(_progress_data)
     , log_message(_log_message)
+    , log_data(_log_data)
 { }
+
+
+const std::string &D2V::getD2VFileName() const {
+    return d2v_file_name;
+}
 
 
 const D2V::Stats &D2V::getStats() const {
@@ -354,17 +369,22 @@ const std::string &D2V::getError() const {
 }
 
 
-bool D2V::engage() {
-    if (!printHeader())
-        return false;
+std::atomic_bool stop_processing(false);
 
-    if (!printSettings())
-        return false;
 
+void D2V::index() {
     AVPacket packet;
     av_init_packet(&packet);
 
     while (av_read_frame(f->fctx, &packet) == 0) {
+        if (stop_processing) {
+            stop_processing = false;
+            result = ProcessingCancelled;
+            fclose(d2v_file);
+            closeAudioFiles(audio_files, f->fctx);
+            return;
+        }
+
         // Apparently we might receive packets from streams with AVDISCARD_ALL set,
         // and also from streams discovered late, probably.
         if (packet.stream_index != video_stream->index &&
@@ -382,7 +402,10 @@ bool D2V::engage() {
 
         if (!okay) {
             av_free_packet(&packet);
-            return false;
+            result = ProcessingError;
+            fclose(d2v_file);
+            closeAudioFiles(audio_files, f->fctx);
+            return;
         }
 
         av_free_packet(&packet);
@@ -390,13 +413,236 @@ bool D2V::engage() {
 
     if (!isDataLineNull()) {
         reorderDataLineFlags();
-        if (!printDataLine())
-            return false;
+        lines.push_back(line);
         clearDataLine();
     }
 
-    if (!printStreamEnd())
-        return false;
 
-    return true;
+    if (!lines.size()) {
+        result = ProcessingFinished;
+        fclose(d2v_file);
+        closeAudioFiles(audio_files, f->fctx);
+        return;
+    }
+
+
+    if (!printHeader()) {
+        result = ProcessingError;
+        fclose(d2v_file);
+        closeAudioFiles(audio_files, f->fctx);
+        return;
+    }
+
+    if (!printSettings()) {
+        result = ProcessingError;
+        fclose(d2v_file);
+        closeAudioFiles(audio_files, f->fctx);
+        return;
+    }
+
+    for (size_t i = 0; i < lines.size(); i++) {
+        if (stop_processing) {
+            stop_processing = false;
+            result = ProcessingCancelled;
+            fclose(d2v_file);
+            closeAudioFiles(audio_files, f->fctx);
+            return;
+        }
+
+        if (!printDataLine(lines[i])) {
+            result = ProcessingError;
+            fclose(d2v_file);
+            closeAudioFiles(audio_files, f->fctx);
+            return;
+        }
+    }
+
+    if (!printStreamEnd()) {
+        result = ProcessingError;
+        fclose(d2v_file);
+        closeAudioFiles(audio_files, f->fctx);
+        return;
+    }
+
+    result = ProcessingFinished;
+    fclose(d2v_file);
+    closeAudioFiles(audio_files, f->fctx);
+}
+
+
+void D2V::demuxVideo(FILE *video_file, int64_t start_gop_position, int64_t end_gop_position) {
+    result = ProcessingFinished;
+
+    f->deselectAllStreams();
+
+    video_stream->discard = AVDISCARD_DEFAULT;
+
+    f->seek(start_gop_position);
+
+    AVPacket packet;
+    av_init_packet(&packet);
+
+    while (av_read_frame(f->fctx, &packet) == 0) {
+        if (stop_processing) {
+            stop_processing = false;
+            result = ProcessingCancelled;
+            fclose(video_file);
+            return;
+        }
+
+        // Apparently we might receive packets from streams with AVDISCARD_ALL set,
+        // and also from streams discovered late, probably.
+        if (packet.stream_index != video_stream->index ||
+            packet.pos < start_gop_position) {
+            av_free_packet(&packet);
+            continue;
+        } else if (packet.pos >= end_gop_position) {
+            av_free_packet(&packet);
+            break;
+        }
+
+        if (progress_report)
+            progress_report(packet.pos - start_gop_position, end_gop_position - start_gop_position, progress_data);
+
+        if (fwrite(packet.data, 1, packet.size, video_file) < (size_t)packet.size) {
+            char id[20] = { 0 };
+            snprintf(id, 19, "%x", video_stream->id);
+            error = "Failed to write video packet from stream id ";
+            error += id;
+            error += ": fwrite() failed.";
+
+            result = ProcessingError;
+
+            av_free_packet(&packet);
+
+            fclose(video_file);
+
+            return;
+        }
+
+        av_free_packet(&packet);
+    }
+
+    fclose(video_file);
+}
+
+
+D2V::ProcessingResult D2V::getResult() {
+    return result;
+}
+
+
+// Terribly inefficient but speed is not really important here.
+int D2V::getGOPStartFrame(int frame) {
+    int total = 0;
+
+    for (size_t i = 0; i < lines.size(); i++) {
+        total += lines[i].flags.size();
+
+        if (frame < total)
+            return total - lines[i].flags.size();
+    }
+
+    return -1;
+}
+
+
+int D2V::getNextGOPStartFrame(int frame) {
+    int total = 0;
+
+    for (size_t i = 0; i < lines.size(); i++) {
+        total += lines[i].flags.size();
+
+        if (frame < total)
+            return total;
+    }
+
+    return -1;
+}
+
+
+int64_t D2V::getGOPStartPosition(int frame) {
+    int total = 0;
+
+    for (size_t i = 0; i < lines.size(); i++) {
+        total += lines[i].flags.size();
+
+        if (frame < total)
+            return lines[i].position;
+    }
+
+    return -1;
+}
+
+
+int64_t D2V::getNextGOPStartPosition(int frame) {
+    int total = 0;
+
+    for (size_t i = 0; i < lines.size(); i++) {
+        total += lines[i].flags.size();
+
+        if (frame < total) {
+            if (i < lines.size() - 1)
+                return lines[i + 1].position;
+            else
+                return INT64_MAX;
+        }
+    }
+
+    return -1;
+}
+
+
+bool D2V::isOpenGOP(int frame) {
+    int total = 0;
+
+    for (size_t i = 0; i < lines.size(); i++) {
+        total += lines[i].flags.size();
+
+        if (frame < total)
+            return !(lines[i].info & INFO_CLOSED_GOP);
+    }
+
+    return false;
+}
+
+
+int D2V::getNumFrames() {
+    int total = 0;
+
+    for (size_t i = 0; i < lines.size(); i++)
+        total += lines[i].flags.size();
+
+    return total;
+}
+
+
+int D2V::getStreamType(const char *name) {
+    std::unordered_map<std::string, int> stream_types_map = {
+        { "mpegvideo", ELEMENTARY_STREAM },
+        { "mpeg", PROGRAM_STREAM },
+        { "mpegts", TRANSPORT_STREAM },
+        { "pva", PVA_STREAM }
+    };
+
+    int stream_type;
+
+    try {
+        stream_type = stream_types_map.at(name);
+    } catch (std::out_of_range &) {
+        stream_type = UNSUPPORTED_STREAM;
+    }
+
+    return stream_type;
+}
+
+
+bool D2V::isSupportedVideoCodecID(AVCodecID id) {
+    /// must be shared with the CLI.
+    std::unordered_set<int> supported_codec_ids = {
+        AV_CODEC_ID_MPEG1VIDEO,
+        AV_CODEC_ID_MPEG2VIDEO
+    };
+
+    return supported_codec_ids.count(id);
 }

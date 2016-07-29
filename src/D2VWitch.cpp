@@ -34,86 +34,39 @@ extern "C" {
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
+#include <windows.h>
 #endif
 
+#include <QApplication>
 
+
+#ifdef D2VWITCH_STATIC_QT
+
+#ifdef _WIN32
+#include <QtPlugin>
+Q_IMPORT_PLUGIN (QWindowsIntegrationPlugin);
+#else
+#error "Not sure what to do with a static Qt on this platform. File a bug report."
+#endif // _WIN32
+
+#endif // D2VWITCH_STATIC_QT
+
+
+#include "Audio.h"
 #include "Bullshit.h"
 #include "D2V.h"
 #include "FakeFile.h"
 #include "FFMPEG.h"
+#include "GUIWindow.h"
 
 
-void printProgress(int64_t current_position, int64_t total_size) {
+void printProgress(int64_t current_position, int64_t total_size, void *) {
     fprintf(stderr, "%3d%%\r", (int)(current_position * 100 / total_size));
 }
 
 
-void printWarnings(const std::string &message) {
+void printWarnings(const std::string &message, void *) {
     fprintf(stderr, "%s\n", message.c_str());
-}
-
-
-AVStream *selectVideoStreamById(AVFormatContext *fctx, int id) {
-    for (unsigned i = 0; i < fctx->nb_streams; i++) {
-        if (fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
-            if (fctx->streams[i]->id == id) {
-                fctx->streams[i]->discard = AVDISCARD_DEFAULT;
-                return fctx->streams[i];
-            }
-        }
-    }
-
-    return nullptr;
-}
-
-
-AVStream *selectFirstVideoStream(AVFormatContext *fctx) {
-    for (unsigned i = 0; i < fctx->nb_streams; i++) {
-        if (fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
-            fctx->streams[i]->discard = AVDISCARD_DEFAULT;
-            return fctx->streams[i];
-        }
-    }
-
-    return nullptr;
-}
-
-
-bool selectAudioStreamsById(AVFormatContext *fctx, std::vector<int> &audio_ids) {
-    for (unsigned i = 0; i < fctx->nb_streams; i++) {
-        if (fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
-            for (size_t j = 0; j < audio_ids.size(); j++) {
-                if (fctx->streams[i]->id == audio_ids[j]) {
-                    fctx->streams[i]->discard = AVDISCARD_DEFAULT;
-                    audio_ids.erase(audio_ids.cbegin() + j);
-                    break;
-                }
-            }
-        }
-    }
-
-    return !audio_ids.size();
-}
-
-
-bool selectAllAudioStreams(AVFormatContext *fctx) {
-    bool okay = false;
-
-    for (unsigned i = 0; i < fctx->nb_streams; i++) {
-        if (fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
-            fctx->streams[i]->discard = AVDISCARD_DEFAULT;
-
-            okay = true;
-        }
-    }
-
-    return okay;
-}
-
-
-void deselectAllStreams(AVFormatContext *fctx) {
-    for (unsigned i = 0; i < fctx->nb_streams; i++)
-        fctx->streams[i]->discard = AVDISCARD_ALL;
 }
 
 
@@ -416,28 +369,8 @@ struct CommandLine {
 };
 
 
-void closeAudioFiles(D2V::AudioFilesMap &audio_files, const AVFormatContext *fctx) {
-    for (unsigned i = 0; i < fctx->nb_streams; i++) {
-        try {
-            void *pointer = audio_files.at(fctx->streams[i]->index);
-
-            if (codecIDRequiresWave64(fctx->streams[i]->codec->codec_id)) {
-                AVFormatContext *w64_ctx = (AVFormatContext *)pointer;
-
-                av_write_trailer(w64_ctx);
-                avformat_free_context(w64_ctx);
-            } else {
-                fclose((FILE *)pointer);
-            }
-        } catch (std::out_of_range &) {
-
-        }
-    }
-}
-
-
 #ifdef _WIN32
-BOOL WINAPI HandlerRoutine(DWORD dwCtrlType) {
+static BOOL WINAPI HandlerRoutine(DWORD dwCtrlType) {
     switch (dwCtrlType) {
     case CTRL_C_EVENT:
     case CTRL_BREAK_EVENT:
@@ -447,28 +380,53 @@ BOOL WINAPI HandlerRoutine(DWORD dwCtrlType) {
         return FALSE;
     }
 }
+#endif
 
 
-int wmain(int argc, wchar_t **argvw) {
+int main(int argc, char **_argv) {
+    // ffmpeg init part 0
+    av_log_set_level(AV_LOG_PANIC);
+    av_register_all();
+    avcodec_register_all();
+
+
+    QApplication app(argc, _argv);
+    QStringList arguments = QApplication::arguments();
+
+    if (arguments.size() == 1) {
+        app.setOrganizationName("d2vwitch");
+        app.setApplicationName("d2vwitch");
+
+        GUIWindow w;
+
+        w.show();
+
+        return app.exec();
+    }
+
+#ifdef _WIN32
+    AttachConsole(ATTACH_PARENT_PROCESS);
+
+    freopen("CON", "w", stdout);
+    freopen("CON", "w", stderr);
+    freopen("CON", "r", stdin);
+
+
     if (_setmode(_fileno(stdout), _O_BINARY) == -1)
         fprintf(stderr, "Failed to set stdout to binary mode.\n");
 
     SetConsoleCtrlHandler(HandlerRoutine, TRUE);
 
-    UTF16 utf16;
 
     std::vector<std::string> argv;
+    argc = arguments.size();
+    argv.reserve(argc);
 
     for (int i = 0; i < argc; i++)
-        argv.push_back(utf16.to_bytes(argvw[i]));
+        argv.push_back(arguments[i].toStdString());
 #else
-int main(int argc, char **argv) {
+    char **argv = _argv;
 #endif
-
-    // ffmpeg init part 0
-    av_log_set_level(AV_LOG_PANIC);
-    av_register_all();
-    avcodec_register_all();
 
 
     // command line parsing
@@ -526,7 +484,7 @@ int main(int argc, char **argv) {
 
 
     // container format check
-    if (getStreamType(f.fctx->iformat->name) == D2V::UNSUPPORTED_STREAM) {
+    if (D2V::getStreamType(f.fctx->iformat->name) == D2V::UNSUPPORTED_STREAM) {
         fprintf(stderr, "Unsupported container type '%s'.\n", f.fctx->iformat->long_name ? f.fctx->iformat->long_name : f.fctx->iformat->name);
 
         f.cleanup();
@@ -537,11 +495,11 @@ int main(int argc, char **argv) {
 
 
     // stream selection
-    deselectAllStreams(f.fctx);
+    f.deselectAllStreams();
 
     AVStream *video_stream;
     if (cmd.have_video_id) {
-        video_stream = selectVideoStreamById(f.fctx, cmd.video_id);
+        video_stream = f.selectVideoStreamById(cmd.video_id);
         if (!video_stream) {
             fprintf(stderr, "Couldn't find video track with id %x.\n", cmd.video_id);
 
@@ -551,7 +509,7 @@ int main(int argc, char **argv) {
             return 1;
         }
     } else {
-        video_stream = selectFirstVideoStream(f.fctx);
+        video_stream = f.selectFirstVideoStream();
         if (!video_stream) {
             fprintf(stderr, "Couldn't find any video tracks.\n");
 
@@ -563,7 +521,7 @@ int main(int argc, char **argv) {
     }
 
     if (cmd.audio_ids.size()) {
-        if (!selectAudioStreamsById(f.fctx, cmd.audio_ids)) {
+        if (!f.selectAudioStreamsById(cmd.audio_ids)) {
             for (size_t i = 0; i < cmd.audio_ids.size(); i++)
                 fprintf(stderr, "Couldn't find audio track with id %x.\n", cmd.audio_ids[i]);
 
@@ -573,7 +531,7 @@ int main(int argc, char **argv) {
             return 1;
         }
     } else if (cmd.audio_ids_all) {
-        if (!selectAllAudioStreams(f.fctx)) {
+        if (!f.selectAllAudioStreams()) {
             fprintf(stderr, "Couldn't find any audio tracks.\n");
 
             f.cleanup();
@@ -584,13 +542,7 @@ int main(int argc, char **argv) {
     }
 
 
-    // video format check
-    std::unordered_set<int> supported_codec_ids = {
-        AV_CODEC_ID_MPEG1VIDEO,
-        AV_CODEC_ID_MPEG2VIDEO
-    };
-
-    if (!supported_codec_ids.count(video_stream->codec->codec_id)) {
+    if (!D2V::isSupportedVideoCodecID(video_stream->codec->codec_id)) {
         const char *type = "unknown";
         const AVCodecDescriptor *desc = av_codec_get_codec_descriptor(video_stream->codec);
         if (desc)
@@ -650,81 +602,17 @@ int main(int argc, char **argv) {
             if (av_opt_get_int(f.fctx->streams[i]->codec, "ab", 0, &bit_rate) >= 0)
                 path += " " + std::to_string(bit_rate / 1000) + " kbps";
 
-            path += ".audio";
+            path += ".audio"; /// proper extension
 
             if (codecIDRequiresWave64(f.fctx->streams[i]->codec->codec_id)) {
-#define ERROR_SIZE 512
-                char error[ERROR_SIZE] = { 0 };
+                std::string error;
 
-                AVFormatContext *w64_ctx = nullptr;
-                int ret = avformat_alloc_output_context2(&w64_ctx, nullptr, "w64", path.c_str());
-                if (ret < 0) {
-                    av_strerror(ret, error, ERROR_SIZE);
-                    fprintf(stderr, "Failed to allocate AVFormatContext for muxing the audio file '%s': %s\n", path.c_str(), error);
+                AVFormatContext *w64_ctx = openWave64(path, f.fctx->streams[i]->codec, error);
+                if (!w64_ctx) {
+                    fprintf(stderr, "%s\n", error.c_str());
 
+                    fclose(d2v_file);
                     closeAudioFiles(audio_files, f.fctx);
-                    f.cleanup();
-                    fake_file.close();
-
-                    return 1;
-                }
-
-                ret = avio_open2(&w64_ctx->pb, path.c_str(), AVIO_FLAG_WRITE, nullptr, nullptr);
-                if (ret < 0) {
-                    av_strerror(ret, error, ERROR_SIZE);
-                    fprintf(stderr, "Failed to open AVIOContext for audio file '%s': %s\n", path.c_str(), error);
-
-                    closeAudioFiles(audio_files, f.fctx);
-                    avformat_free_context(w64_ctx);
-                    f.cleanup();
-                    fake_file.close();
-
-                    return 1;
-                }
-
-                AVCodecContext *in_ctx = f.fctx->streams[i]->codec;
-                AVCodecID codec_id = av_get_pcm_codec(in_ctx->sample_fmt, 0);
-
-                AVCodec *pcm_codec = avcodec_find_encoder(codec_id);
-                if (!pcm_codec) {
-                    fprintf(stderr, "Failed to find encoder for codec id %d.\n", f.fctx->streams[i]->codec->codec_id);
-
-                    closeAudioFiles(audio_files, f.fctx);
-                    avformat_free_context(w64_ctx);
-                    f.cleanup();
-                    fake_file.close();
-
-                    return 1;
-                }
-
-                if (!avformat_new_stream(w64_ctx, pcm_codec)) {
-                    fprintf(stderr, "Failed to create new AVStream.\n");
-
-                    closeAudioFiles(audio_files, f.fctx);
-                    avformat_free_context(w64_ctx);
-                    f.cleanup();
-                    fake_file.close();
-
-                    return 1;
-                }
-
-                AVCodecContext *out_ctx = w64_ctx->streams[0]->codec;
-                out_ctx->codec_type = AVMEDIA_TYPE_AUDIO;
-                out_ctx->codec_id = codec_id;
-                out_ctx->codec_tag = 0x0001;
-                out_ctx->sample_rate = in_ctx->sample_rate;
-                out_ctx->channels = in_ctx->channels;
-                out_ctx->sample_fmt = in_ctx->sample_fmt;
-                out_ctx->channel_layout = in_ctx->channel_layout;
-
-                ret = avformat_write_header(w64_ctx, nullptr);
-                if (ret < 0) {
-                    av_strerror(ret, error, ERROR_SIZE);
-#undef ERROR_SIZE
-                    fprintf(stderr, "Failed to write Wave64 header to file '%s': %s\n", path.c_str(), error);
-
-                    closeAudioFiles(audio_files, f.fctx);
-                    avformat_free_context(w64_ctx);
                     f.cleanup();
                     fake_file.close();
 
@@ -737,6 +625,7 @@ int main(int argc, char **argv) {
                 if (!file) {
                     fprintf(stderr, "Failed to open audio file '%s' for writing: %s\n", path.c_str(), strerror(errno));
 
+                    fclose(d2v_file);
                     closeAudioFiles(audio_files, f.fctx);
                     f.cleanup();
                     fake_file.close();
@@ -750,11 +639,13 @@ int main(int argc, char **argv) {
     }
 
 
+    /// this should be done before opening any audio files so that no empty files are left behind if this fails.
     // ffmpeg init part 2: audio decoders
     if (audio_files.size()) {
         if (!f.initAudioCodecs()) {
             fprintf(stderr, "%s\n", f.getError().c_str());
 
+            fclose(d2v_file);
             closeAudioFiles(audio_files, f.fctx);
             f.cleanup();
             fake_file.close();
@@ -772,12 +663,13 @@ int main(int argc, char **argv) {
         logging_func = nullptr;
     }
 
-    D2V d2v(d2v_file, audio_files, &fake_file, &f, video_stream, progress_func, logging_func);
+    D2V d2v(cmd.d2v_path, d2v_file, audio_files, &fake_file, &f, video_stream, progress_func, nullptr, logging_func, nullptr);
 
-    if (!d2v.engage()) {
+    d2v.index();
+
+    if (d2v.getResult() == D2V::ProcessingError) {
         fprintf(stderr, "%s\n", d2v.getError().c_str());
 
-        closeAudioFiles(audio_files, f.fctx);
         f.cleanup();
         fake_file.close();
 
@@ -799,8 +691,6 @@ int main(int argc, char **argv) {
 
 
     // some cleanup
-    closeAudioFiles(audio_files, f.fctx);
-    fclose(d2v_file);
     f.cleanup();
     fake_file.close();
 

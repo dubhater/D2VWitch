@@ -53,9 +53,23 @@ public:
 
     bool initVideoCodec(AVCodecID video_codec_id);
 
+    bool initAudioCodec(int stream_index);
+
     bool initAudioCodecs();
 
     void cleanup();
+
+    AVStream *selectVideoStreamById(int id);
+
+    AVStream *selectFirstVideoStream();
+
+    bool selectAudioStreamsById(std::vector<int> &audio_ids);
+
+    bool selectAllAudioStreams();
+
+    void deselectAllStreams();
+
+    bool seek(int64_t position);
 };
 
 

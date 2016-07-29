@@ -27,6 +27,11 @@ extern "C" {
 #include "Bullshit.h"
 
 
+FakeFile::~FakeFile() {
+    close();
+}
+
+
 bool FakeFile::open() {
     total_size = 0;
     current_position = 0;

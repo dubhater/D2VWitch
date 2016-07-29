@@ -47,6 +47,7 @@ class FakeFile : public std::vector<RealFile> {
 
 
 public:
+    ~FakeFile();
 
     bool open();
 

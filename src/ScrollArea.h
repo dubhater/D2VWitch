@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2016, John Smith
+Copyright (c) 2015, John Smith
 
 Permission to use, copy, modify, and/or distribute this software for
 any purpose with or without fee is hereby granted, provided that the
@@ -18,26 +18,23 @@ SOFTWARE.
 */
 
 
-#ifndef D2V_WITCH_BULLSHIT_H
-#define D2V_WITCH_BULLSHIT_H
+#ifndef D2V_WITCH_SCROLLAREA_H
+#define D2V_WITCH_SCROLLAREA_H
 
-#include <cstdio>
-#include <string>
-
-
-#ifdef _MSC_VER
-#undef fseeko
-#undef ftello
-#define fseeko _fseeki64
-#define ftello _ftelli64
-
-#define snprintf _snprintf
-#endif
+#include <QScrollArea>
 
 
-void makeAbsolute(std::string &path, std::string &error);
+class ScrollArea : public QScrollArea {
+    Q_OBJECT
 
-FILE *openFile(const char *path, const char *mode);
+public:
+    using QScrollArea::QScrollArea;
 
-#endif // D2V_WITCH_BULLSHIT_H
+private:
+    void mousePressEvent(QMouseEvent *e);
+    void mouseMoveEvent(QMouseEvent *e);
 
+    QPoint old_mouse_position;
+};
+
+#endif // D2V_WITCH_SCROLLAREA_H

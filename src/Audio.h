@@ -18,26 +18,15 @@ SOFTWARE.
 */
 
 
-#ifndef D2V_WITCH_BULLSHIT_H
-#define D2V_WITCH_BULLSHIT_H
+#ifndef D2V_WITCH_COMMON_H
+#define D2V_WITCH_COMMON_H
 
-#include <cstdio>
-#include <string>
-
-
-#ifdef _MSC_VER
-#undef fseeko
-#undef ftello
-#define fseeko _fseeki64
-#define ftello _ftelli64
-
-#define snprintf _snprintf
-#endif
+#include "D2V.h"
 
 
-void makeAbsolute(std::string &path, std::string &error);
+AVFormatContext *openWave64(const std::string &path, const AVCodecContext *in_ctx, std::string &error);
 
-FILE *openFile(const char *path, const char *mode);
+void closeAudioFiles(D2V::AudioFilesMap &audio_files, const AVFormatContext *fctx);
 
-#endif // D2V_WITCH_BULLSHIT_H
 
+#endif // D2V_WITCH_COMMON_H
