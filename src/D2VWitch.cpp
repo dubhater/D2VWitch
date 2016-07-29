@@ -75,7 +75,7 @@ void printHelp() {
 D2V Witch indexes MPEG (1, 2) streams and writes D2V files. These can
 be used with the VapourSynth plugin d2vsource.
 
-Usage: D2VWitch [options] input_file1 input_file2 ...
+Usage: d2vwitch [options] input_file1 input_file2 ...
 
 Options:
     --help

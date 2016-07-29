@@ -14,14 +14,14 @@ moc_verbose_0 = @echo "  MOC     " $@;
 moc_%.cpp : %.h
 	$(moc_verbose)$(MOC) -o "$@" "$<"
 
-bin_PROGRAMS = D2VWitch
+bin_PROGRAMS = d2vwitch
 
 moc_files = src/moc_GUIWindow.cpp \
 			src/moc_ScrollArea.cpp
 
 MOSTLYCLEANFILES = $(moc_files)
 
-D2VWitch_SOURCES = src/Bullshit.cpp \
+d2vwitch_SOURCES = src/Bullshit.cpp \
 				   src/Bullshit.h \
 				   src/Audio.cpp \
 				   src/Audio.h \
