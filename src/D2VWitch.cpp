@@ -602,7 +602,7 @@ int main(int argc, char **_argv) {
             if (av_opt_get_int(f.fctx->streams[i]->codec, "ab", 0, &bit_rate) >= 0)
                 path += " " + std::to_string(bit_rate / 1000) + " kbps";
 
-            path += ".audio"; /// proper extension
+            path += std::string(".") + suggestAudioFileExtension(f.fctx->streams[i]->codec->codec_id);
 
             if (codecIDRequiresWave64(f.fctx->streams[i]->codec->codec_id)) {
                 std::string error;

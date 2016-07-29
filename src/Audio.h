@@ -28,5 +28,6 @@ AVFormatContext *openWave64(const std::string &path, const AVCodecContext *in_ct
 
 void closeAudioFiles(D2V::AudioFilesMap &audio_files, const AVFormatContext *fctx);
 
+const char *suggestAudioFileExtension(AVCodecID codec_id);
 
 #endif // D2V_WITCH_COMMON_H

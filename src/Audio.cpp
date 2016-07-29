@@ -106,3 +106,11 @@ void closeAudioFiles(D2V::AudioFilesMap &audio_files, const AVFormatContext *fct
     }
 }
 
+
+const char *suggestAudioFileExtension(AVCodecID codec_id) {
+    const char *extension = avcodec_get_name(codec_id);
+    if (codecIDRequiresWave64(codec_id))
+        extension = "w64";
+
+    return extension;
+}

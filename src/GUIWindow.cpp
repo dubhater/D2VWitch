@@ -237,9 +237,7 @@ void GUIWindow::inputFilesUpdated() {
             if (av_opt_get_int(f.fctx->streams[i]->codec, "ab", 0, &bit_rate) < 0)
                 bit_rate = 0;
 
-            const char *extension = avcodec_get_name(f.fctx->streams[i]->codec->codec_id);
-            if (codecIDRequiresWave64(f.fctx->streams[i]->codec->codec_id))
-                extension = "w64";
+            const char *extension = suggestAudioFileExtension(f.fctx->streams[i]->codec->codec_id);
 
             suffix = suffix.arg(f.fctx->streams[i]->id, 0, 16).arg(channels).arg(bit_rate / 1000).arg(extension);
 
