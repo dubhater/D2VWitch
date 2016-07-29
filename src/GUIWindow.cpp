@@ -50,12 +50,6 @@ enum DataRoles {
 };
 
 
-enum ColourRange {
-    ColourRangeLimited = 0,
-    ColourRangeFull
-};
-
-
 static void updateProgress(int64_t current_position, int64_t total_size, void *data) {
     GUIWindow *window = (GUIWindow *)data;
 
@@ -319,10 +313,9 @@ void GUIWindow::startIndexing() {
 
     logMessage(QStringLiteral("Started indexing whole video."));
 
-    /// the colour range
-    ///
+
     QThread *worker_thread = new QThread;
-    IndexingWorker *worker = new IndexingWorker(d2v_edit->text(), d2v_file, audio_files, &fake_file, &f, video_stream, this);
+    IndexingWorker *worker = new IndexingWorker(d2v_edit->text(), d2v_file, audio_files, &fake_file, &f, video_stream, (D2V::ColourRange)range_group->checkedId(), this);
     worker->moveToThread(worker_thread);
 
     connect(worker_thread, &QThread::started, worker, &IndexingWorker::process);
@@ -423,10 +416,10 @@ GUIWindow::GUIWindow(QWidget *parent)
     video_demux_check = new QCheckBox("Demu&x (part of) the selected video track", this);
 
     QGroupBox *range_box = new QGroupBox("Input colour range", this);
-    QButtonGroup *range_group = new QButtonGroup(this);
-    range_group->addButton(new QRadioButton("&Limited (TV)", this), ColourRangeLimited);
-    range_group->button(ColourRangeLimited)->setChecked(true);
-    range_group->addButton(new QRadioButton("&Full (PC)", this), ColourRangeFull);
+    range_group = new QButtonGroup(this);
+    range_group->addButton(new QRadioButton("&Limited (TV)", this), D2V::ColourRangeLimited);
+    range_group->button(D2V::ColourRangeLimited)->setChecked(true);
+    range_group->addButton(new QRadioButton("&Full (PC)", this), D2V::ColourRangeFull);
 
     audio_list = new QListWidget(this);
     audio_list->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -655,8 +648,8 @@ GUIWindow::GUIWindow(QWidget *parent)
     hbox = new QHBoxLayout;
     hbox->addWidget(video_list);
     QVBoxLayout *vbox2 = new QVBoxLayout;
-    vbox2->addWidget(range_group->button(ColourRangeLimited));
-    vbox2->addWidget(range_group->button(ColourRangeFull));
+    vbox2->addWidget(range_group->button(D2V::ColourRangeLimited));
+    vbox2->addWidget(range_group->button(D2V::ColourRangeFull));
     vbox2->addStretch(1);
     range_box->setLayout(vbox2);
     hbox->addWidget(range_box);
@@ -833,10 +826,9 @@ void GUIWindow::demuxingFinished(D2V new_d2v) {
 
         logMessage(QStringLiteral("Started indexing the demuxed video %1.").arg(video_file_name));
 
-        /// the colour range
-        ///
+
         QThread *worker_thread = new QThread;
-        IndexingWorker *worker = new IndexingWorker(new_d2v_name, new_d2v_file, D2V::AudioFilesMap(), &demuxed_fake_file, &demuxed_f, video_stream, this);
+        IndexingWorker *worker = new IndexingWorker(new_d2v_name, new_d2v_file, D2V::AudioFilesMap(), &demuxed_fake_file, &demuxed_f, video_stream, (D2V::ColourRange)range_group->checkedId(), this);
         worker->moveToThread(worker_thread);
 
         connect(worker_thread, &QThread::started, worker, &IndexingWorker::process);
@@ -1087,8 +1079,8 @@ void GUIWindow::createVapourSynthFilterChain() {
 }
 
 
-IndexingWorker::IndexingWorker(const QString &_d2v_file_name, FILE *_d2v_file, const D2V::AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, GUIWindow *_window)
-    : d2v(_d2v_file_name.toStdString(), _d2v_file, _audio_files, _fake_file, _f, _video_stream, ::updateProgress, _window, ::logMessage, _window)
+IndexingWorker::IndexingWorker(const QString &_d2v_file_name, FILE *_d2v_file, const D2V::AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, D2V::ColourRange _input_range, GUIWindow *_window)
+    : d2v(_d2v_file_name.toStdString(), _d2v_file, _audio_files, _fake_file, _f, _video_stream, _input_range, ::updateProgress, _window, ::logMessage, _window)
 {
 
 }

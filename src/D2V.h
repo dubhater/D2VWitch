@@ -53,6 +53,11 @@ public:
         ProcessingError
     };
 
+    enum ColourRange {
+        ColourRangeLimited = 0,
+        ColourRangeFull
+    };
+
 
     typedef void (*ProgressFunction)(int64_t current_position, int64_t total_size, void *progress_data);
     typedef void (*LoggingFunction)(const std::string &message, void *log_data);
@@ -74,7 +79,7 @@ public:
 
     D2V();
 
-    D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, ProgressFunction _progress_report, void *_progress_data, LoggingFunction _log_message, void *_log_data);
+    D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, ColourRange _input_range, ProgressFunction _progress_report, void *_progress_data, LoggingFunction _log_message, void *_log_data);
 
     const std::string &getD2VFileName() const;
 
@@ -155,6 +160,7 @@ private:
     FakeFile* fake_file;
     FFMPEG *f;
     AVStream *video_stream;
+    ColourRange input_range;
     ProgressFunction progress_report;
     void *progress_data;
     LoggingFunction log_message;

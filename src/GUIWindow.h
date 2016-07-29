@@ -66,6 +66,7 @@ class GUIWindow : public QMainWindow {
     QListWidget *video_list;
     QButtonGroup *video_group;
     QCheckBox *video_demux_check;
+    QButtonGroup *range_group;
     QListWidget *audio_list;
     QLabel *video_frame_label;
     QSpinBox *video_frame_spin;
@@ -115,7 +116,7 @@ class IndexingWorker : public QObject {
     Q_OBJECT
 
 public:
-    IndexingWorker(const QString &_d2v_file_name, FILE *_d2v_file, const D2V::AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, GUIWindow *_window);
+    IndexingWorker(const QString &_d2v_file_name, FILE *_d2v_file, const D2V::AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, D2V::ColourRange _input_range, GUIWindow *_window);
 
 public slots:
     void process();

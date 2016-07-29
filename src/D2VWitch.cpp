@@ -107,6 +107,11 @@ Options:
         Process the video track with this id. By default, the first
         video track found will be processed.
 
+    --input-range <range>
+        Set the YUVRGB_Scale field in the d2v file according to the
+        video's input colour range. Possible values are "limited" and
+        "full". By default, the video is assumed to have limited range.
+
 )usage";
 
     fprintf(stderr, "%s", usage);
@@ -216,6 +221,8 @@ struct CommandLine {
     int video_id;
     bool have_video_id;
 
+    D2V::ColourRange input_range;
+
     std::string error;
 
     CommandLine()
@@ -228,6 +235,7 @@ struct CommandLine {
         , audio_ids_all(false)
         , video_id(0)
         , have_video_id(false)
+        , input_range(D2V::ColourRangeLimited)
         , error{ }
     { }
 
@@ -245,6 +253,7 @@ struct CommandLine {
         const char *opt_output = "--output";
         const char *opt_audio_ids = "--audio-ids";
         const char *opt_video_id = "--video-id";
+        const char *opt_input_range = "--input-range";
 
         std::unordered_set<std::string> valid_options = {
             opt_help,
@@ -253,7 +262,8 @@ struct CommandLine {
             opt_quiet,
             opt_output,
             opt_audio_ids,
-            opt_video_id
+            opt_video_id,
+            opt_input_range
         };
 
         for (int i = 1; i < argc; i++) {
@@ -345,6 +355,25 @@ struct CommandLine {
 
                 if (id.size() != converted_chars) {
                     error = "Video id '" + id + "' is not a valid hexadecimal number.";
+                    return false;
+                }
+            } else if (arg == opt_input_range) {
+                if (i == argc - 1 || valid_options.count(argv[i + 1])) {
+                    error = opt_input_range;
+                    error += " requires either 'limited' or 'full'";
+                    return false;
+                }
+
+                std::unordered_map<std::string, D2V::ColourRange> range_map = {
+                    { "limited", D2V::ColourRangeLimited },
+                    { "full", D2V::ColourRangeFull }
+                };
+
+                try {
+                    input_range = range_map.at(argv[i + 1]);
+                    i++;
+                } catch (std::out_of_range &) {
+                    error = std::string("Input range '") + argv[i + 1] + "' is neither 'limited' nor 'full'.";
                     return false;
                 }
             } else { // Input files.
@@ -663,7 +692,7 @@ int main(int argc, char **_argv) {
         logging_func = nullptr;
     }
 
-    D2V d2v(cmd.d2v_path, d2v_file, audio_files, &fake_file, &f, video_stream, progress_func, nullptr, logging_func, nullptr);
+    D2V d2v(cmd.d2v_path, d2v_file, audio_files, &fake_file, &f, video_stream, cmd.input_range, progress_func, nullptr, logging_func, nullptr);
 
     d2v.index();
 

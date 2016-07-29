@@ -109,6 +109,8 @@ bool D2V::printSettings() {
     else if (video_stream->codec->codec_id == AV_CODEC_ID_MPEG2VIDEO)
         mpeg_type = 2;
 
+    int yuvrgb_scale = input_range == ColourRangeLimited ? 1 : 0;
+
     int width, height;
     if (av_opt_get_image_size(video_stream->codec, "video_size", 0, &width, &height) < 0)
         width = height = -1;
@@ -136,7 +138,7 @@ bool D2V::printSettings() {
     }
     settings += "MPEG_Type=" + std::to_string(mpeg_type) + "\n";
     settings += "iDCT_Algorithm=6\n"; // "32-bit SSEMMX (Skal)". No one cares anyway.
-    settings += "YUVRGB_Scale=0\n"; // "TV Scale".
+    settings += "YUVRGB_Scale=" + std::to_string(yuvrgb_scale) + "\n";
     settings += "Luminance_Filter=0,0\n"; // We don't care.
     settings += "Clipping=0,0,0,0\n"; // We don't crop here.
     settings += "Aspect_Ratio=" + std::to_string(dar.num) + ":" + std::to_string(dar.den) + "\n";
@@ -340,13 +342,14 @@ D2V::D2V() {
 }
 
 
-D2V::D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, ProgressFunction _progress_report, void *_progress_data, LoggingFunction _log_message, void *_log_data)
+D2V::D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, D2V::ColourRange _input_range, ProgressFunction _progress_report, void *_progress_data, LoggingFunction _log_message, void *_log_data)
     : d2v_file_name(_d2v_file_name)
     , d2v_file(_d2v_file)
     , audio_files(_audio_files)
     , fake_file(_fake_file)
     , f(_f)
     , video_stream(_video_stream)
+    , input_range(_input_range)
     , progress_report(_progress_report)
     , progress_data(_progress_data)
     , log_message(_log_message)
