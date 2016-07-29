@@ -30,4 +30,6 @@ void closeAudioFiles(D2V::AudioFilesMap &audio_files, const AVFormatContext *fct
 
 const char *suggestAudioFileExtension(AVCodecID codec_id);
 
+int64_t getChannelLayout(AVCodecContext *avctx);
+
 #endif // D2V_WITCH_COMMON_H

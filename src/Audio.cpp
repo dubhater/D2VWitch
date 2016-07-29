@@ -18,6 +18,10 @@ SOFTWARE.
 */
 
 
+extern "C" {
+#include <libavutil/opt.h>
+}
+
 #include "Audio.h"
 
 
@@ -113,4 +117,19 @@ const char *suggestAudioFileExtension(AVCodecID codec_id) {
         extension = "w64";
 
     return extension;
+}
+
+
+int64_t getChannelLayout(AVCodecContext *avctx) {
+    int64_t channel_layout = 0;
+
+    av_opt_get_int(avctx, "channel_layout", 0, &channel_layout);
+
+    if (channel_layout == 0) {
+        int64_t channels = 0;
+        av_opt_get_int(avctx, "ac", 0, &channels);
+        channel_layout = av_get_default_channel_layout(channels);
+    }
+
+    return channel_layout;
 }

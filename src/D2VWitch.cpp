@@ -184,8 +184,7 @@ void printInfo(const AVFormatContext *fctx, const FakeFile &fake_file) {
             if (av_opt_get_int(fctx->streams[i]->codec, "ab", 0, &bit_rate) < 0)
                 bit_rate = -1;
 
-            if (av_opt_get_int(fctx->streams[i]->codec, "channel_layout", 0, &channel_layout) < 0)
-                channel_layout = 0;
+            channel_layout = getChannelLayout(fctx->streams[i]->codec);
 
             if (av_opt_get_int(fctx->streams[i]->codec, "ar", 0, &sample_rate) < 0)
                 sample_rate = -1;
@@ -621,12 +620,12 @@ int main(int argc, char **_argv) {
 
             int64_t bit_rate, channel_layout;
 
-            if (av_opt_get_int(f.fctx->streams[i]->codec, "channel_layout", 0, &channel_layout) >= 0) {
-                char channels[512] = { 0 };
-                av_get_channel_layout_string(channels, 512, 0, channel_layout);
-                path += " ";
-                path += channels;
-            }
+            channel_layout = getChannelLayout(f.fctx->streams[i]->codec);
+
+            char channels[512] = { 0 };
+            av_get_channel_layout_string(channels, 512, 0, channel_layout);
+            path += " ";
+            path += channels;
 
             if (av_opt_get_int(f.fctx->streams[i]->codec, "ab", 0, &bit_rate) >= 0)
                 path += " " + std::to_string(bit_rate / 1000) + " kbps";

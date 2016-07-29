@@ -221,12 +221,11 @@ void GUIWindow::inputFilesUpdated() {
         } else if (f.fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
             QString suffix = QStringLiteral(" T%1 %2 %3 kbps.%4");
 
-            char channels[512] = "0.0";
+            char channels[512] = { 0 };
             int64_t bit_rate = 0;
-            int64_t channel_layout = 0;
+            int64_t channel_layout = getChannelLayout(f.fctx->streams[i]->codec);
 
-            if (av_opt_get_int(f.fctx->streams[i]->codec, "channel_layout", 0, &channel_layout) >= 0)
-                av_get_channel_layout_string(channels, 512, 0, channel_layout);
+            av_get_channel_layout_string(channels, 512, 0, channel_layout);
 
             if (av_opt_get_int(f.fctx->streams[i]->codec, "ab", 0, &bit_rate) < 0)
                 bit_rate = 0;
