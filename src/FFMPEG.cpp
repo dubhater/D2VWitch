@@ -202,7 +202,7 @@ bool FFMPEG::selectAudioStreamsById(std::vector<int> &audio_ids) {
             for (size_t j = 0; j < audio_ids.size(); j++) {
                 if (fctx->streams[i]->id == audio_ids[j]) {
                     fctx->streams[i]->discard = AVDISCARD_DEFAULT;
-                    audio_ids.erase(audio_ids.cbegin() + j);
+                    audio_ids.erase(audio_ids.begin() + j);
                     break;
                 }
             }
