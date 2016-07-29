@@ -299,6 +299,7 @@ bool D2V::handleAudioPacket(AVPacket *packet) {
             pkt_in.size -= ret;
 
             AVPacket pkt_out;
+            av_init_packet(&pkt_out);
             pkt_out.data = frame->data[0];
             pkt_out.size = frame->nb_samples * frame->channels * av_get_bytes_per_sample((AVSampleFormat)frame->format);
             pkt_out.stream_index = 0;
