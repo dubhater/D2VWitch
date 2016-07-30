@@ -52,7 +52,7 @@ AVFormatContext *openWave64(const std::string &path, const AVCodecContext *in_ct
 
     AVCodec *pcm_codec = avcodec_find_encoder(codec_id);
     if (!pcm_codec) {
-        error = "Failed to find encoder for codec id " + std::to_string(codec_id) + ".";
+        error = "Failed to find encoder for codec '" + std::string(avcodec_get_name(codec_id)) + "' (id " + std::to_string(codec_id) + ").";
 
         avformat_free_context(w64_ctx);
 

@@ -292,8 +292,13 @@ void GUIWindow::startIndexing() {
                     fclose(d2v_file);
                     closeAudioFiles(audio_files, f.fctx);
 
+                    start_stop_button->setText("&Engage");
+                    container_widget->setEnabled(true);
+
                     return;
                 }
+
+                audio_files.insert({ f.fctx->streams[stream_index]->index, w64_ctx });
             } else {
                 FILE *file = openFile(file_name.toUtf8().constData(), "wb");
                 if (!file) {
@@ -301,6 +306,9 @@ void GUIWindow::startIndexing() {
 
                     fclose(d2v_file);
                     closeAudioFiles(audio_files, f.fctx);
+
+                    start_stop_button->setText("&Engage");
+                    container_widget->setEnabled(true);
 
                     return;
                 }
