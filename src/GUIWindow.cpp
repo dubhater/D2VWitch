@@ -404,6 +404,9 @@ GUIWindow::GUIWindow(QWidget *parent)
     qRegisterMetaType<D2V>();
 
 
+    setAcceptDrops(true);
+
+
     setWindowTitle("D2V Witch v" PACKAGE_VERSION);
 
 
@@ -1083,6 +1086,43 @@ void GUIWindow::createVapourSynthFilterChain() {
     displayFrame(0);
 
 #undef THEREFORE
+}
+
+
+void GUIWindow::dragEnterEvent(QDragEnterEvent *event) {
+    if (event->mimeData()->hasUrls())
+        event->acceptProposedAction();
+}
+
+
+void GUIWindow::dropEvent(QDropEvent *event) {
+    QList<QUrl> urls = event->mimeData()->urls();
+
+    QStringList paths;
+    paths.reserve(urls.size());
+
+    for (int i = 0; i < urls.size(); i++)
+        if (urls[i].isLocalFile())
+            paths.push_back(urls[i].toLocalFile());
+
+    if (!paths.size())
+        return;
+
+    paths.sort();
+
+    fake_file.close();
+
+    for (int i = 0; i < paths.size(); i++) {
+        input_list->addItem(paths[i]);
+        fake_file.push_back(paths[i].toStdString());
+    }
+
+
+    clearUserInterface();
+
+    inputFilesUpdated();
+
+    event->acceptProposedAction();
 }
 
 
