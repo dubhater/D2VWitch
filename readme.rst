@@ -1,12 +1,25 @@
 Description
 ===========
 
+D2V Witch indexes MPEG (1, 2) streams and writes D2V files. These can
+be used with the VapourSynth plugin d2vsource.
+
+The executable is both a console application and a graphical one. The
+graphical interface is shown if the command line parameters passed
+are all `recognised by Qt <http://doc.qt.io/qt-5/qapplication.html#QApplication>`_,
+or if there are no command line parameters.
+
+Due to technical reasons, D2V Witch will not look quite right in
+cmd.exe, but it's still pretty usable.
+
+In order to help with cutting and demuxing parts of the video, the
+graphical interface will use the VapourSynth plugin d2vsource to
+display the video, if VapourSynth and the plugin can be found. Cutting
+parts of the video can still be done even if they are not found.
+
 ::
 
-    D2V Witch indexes MPEG (1, 2) streams and writes D2V files. These can
-    be used with the VapourSynth plugin d2vsource.
-
-    Usage: D2VWitch [options] input_file1 input_file2 ...
+    Usage: d2vwitch [options] input_file1 input_file2 ...
 
     Options:
         --help
@@ -38,6 +51,11 @@ Description
             Process the video track with this id. By default, the first
             video track found will be processed.
 
+        --input-range <range>
+            Set the YUVRGB_Scale field in the d2v file according to the
+            video's input colour range. Possible values are "limited" and
+            "full". By default, the video is assumed to have limited range.
+
 
 Compilation
 ===========
@@ -52,6 +70,10 @@ Requirements:
     - A C++11 compiler
 
     - FFmpeg (Libav probably works too)
+
+    - Qt 5.2, or maybe newer
+
+    - VapourSynth.h
 
 
 Limitations
