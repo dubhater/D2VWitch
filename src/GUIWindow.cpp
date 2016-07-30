@@ -751,8 +751,8 @@ void GUIWindow::indexingFinished(D2V new_d2v) {
         if (video_demux_check->isChecked()) {
             int num_frames = d2v.getNumFrames();
 
-            video_frame_spin->setMaximum(num_frames);
-            video_frame_slider->setMaximum(num_frames);
+            video_frame_spin->setMaximum(num_frames - 1);
+            video_frame_slider->setMaximum(num_frames - 1);
 
             range_start = 0;
             range_end = num_frames - 1;
