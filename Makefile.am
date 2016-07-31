@@ -17,6 +17,7 @@ moc_%.cpp : %.h
 bin_PROGRAMS = d2vwitch
 
 moc_files = src/moc_GUIWindow.cpp \
+			src/moc_ListWidget.cpp \
 			src/moc_ScrollArea.cpp
 
 MOSTLYCLEANFILES = $(moc_files)
@@ -34,6 +35,8 @@ d2vwitch_SOURCES = src/Bullshit.cpp \
 				   src/FFMPEG.h \
 				   src/GUIWindow.cpp \
 				   src/GUIWindow.h \
+				   src/ListWidget.cpp \
+				   src/ListWidget.h \
 				   src/MPEGParser.cpp \
 				   src/MPEGParser.h \
 				   src/ScrollArea.cpp \

@@ -410,7 +410,7 @@ GUIWindow::GUIWindow(QWidget *parent)
     setWindowTitle("D2V Witch v" PACKAGE_VERSION);
 
 
-    input_list = new QListWidget(this);
+    input_list = new ListWidget(this);
     input_list->setSelectionMode(QAbstractItemView::ExtendedSelection);
     QPushButton *add_button = new QPushButton("&Add files", this);
     QPushButton *remove_button = new QPushButton("&Remove files", this);
@@ -471,6 +471,8 @@ GUIWindow::GUIWindow(QWidget *parent)
 
     container_widget = new QStackedWidget(this);
 
+
+    connect(input_list, &ListWidget::deletePressed, remove_button, &QPushButton::click);
 
     connect(add_button, &QPushButton::clicked, [this] () {
         QStringList file_names = QFileDialog::getOpenFileNames(this, "Open video files", "", "", nullptr, QFileDialog::DontUseNativeDialog);

@@ -28,6 +28,7 @@ SOFTWARE.
 #include "D2V.h"
 #include "FakeFile.h"
 #include "FFMPEG.h"
+#include "ListWidget.h"
 
 
 class GUIWindow : public QMainWindow {
@@ -61,7 +62,7 @@ class GUIWindow : public QMainWindow {
 
     // Widgets
 
-    QListWidget *input_list;
+    ListWidget *input_list;
     QLineEdit *d2v_edit;
     QListWidget *video_list;
     QButtonGroup *video_group;
