@@ -269,8 +269,7 @@ void GUIWindow::startIndexing() {
     if (!d2v_file) {
         errorPopup(QStringLiteral("Failed to open d2v file '%1' for writing: %2").arg(d2v_edit->text()).arg(strerror(errno)));
 
-        start_stop_button->setText("&Engage");
-        container_widget->setEnabled(true);
+        enableInterface(true);
 
         return;
     }
@@ -292,8 +291,7 @@ void GUIWindow::startIndexing() {
                     fclose(d2v_file);
                     closeAudioFiles(audio_files, f.fctx);
 
-                    start_stop_button->setText("&Engage");
-                    container_widget->setEnabled(true);
+                    enableInterface(true);
 
                     return;
                 }
@@ -307,8 +305,7 @@ void GUIWindow::startIndexing() {
                     fclose(d2v_file);
                     closeAudioFiles(audio_files, f.fctx);
 
-                    start_stop_button->setText("&Engage");
-                    container_widget->setEnabled(true);
+                    enableInterface(true);
 
                     return;
                 }
@@ -353,8 +350,7 @@ void GUIWindow::startDemuxing() {
     if (!video_file) {
         errorPopup(QStringLiteral("Failed to open video file '%1' for writing: %2").arg(video_file_name).arg(strerror(errno)));
 
-        start_stop_button->setText("&Engage");
-        container_widget->setEnabled(true);
+        enableInterface(true);
 
         return;
     }
@@ -427,9 +423,9 @@ GUIWindow::GUIWindow(QWidget *parent)
 
     QGroupBox *range_box = new QGroupBox("Input colour range", this);
     range_group = new QButtonGroup(this);
-    range_group->addButton(new QRadioButton("&Limited (TV)", this), D2V::ColourRangeLimited);
+    range_group->addButton(new QRadioButton("Limited (&TV)", this), D2V::ColourRangeLimited);
     range_group->button(D2V::ColourRangeLimited)->setChecked(true);
-    range_group->addButton(new QRadioButton("&Full (PC)", this), D2V::ColourRangeFull);
+    range_group->addButton(new QRadioButton("Full (&PC)", this), D2V::ColourRangeFull);
 
     audio_list = new QListWidget(this);
     audio_list->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -472,6 +468,22 @@ GUIWindow::GUIWindow(QWidget *parent)
     container_widget = new QStackedWidget(this);
 
 
+    QMenuBar *bar = menuBar();
+
+    QMenu *file_menu = bar->addMenu(QStringLiteral("&File"));
+    QMenu *help_menu = bar->addMenu(QStringLiteral("&Help"));
+
+    QAction *open_action = new QAction(QStringLiteral("&Open video files"), this);
+    open_action->setShortcut(QKeySequence(QStringLiteral("Ctrl+O")));
+
+    QAction *quit_action = new QAction(QStringLiteral("&Quit"), this);
+    quit_action->setShortcut(QKeySequence(QStringLiteral("Ctrl+Q")));;
+
+    QAction *about_action = new QAction(QStringLiteral("&About D2V Witch"), this);
+
+    QAction *aboutqt_action = new QAction(QStringLiteral("About &Qt"), this);
+
+
     connect(input_list, &ListWidget::deletePressed, remove_button, &QPushButton::click);
 
     connect(add_button, &QPushButton::clicked, [this] () {
@@ -481,6 +493,13 @@ GUIWindow::GUIWindow(QWidget *parent)
             return;
 
         fake_file.close();
+
+        if (container_widget->currentWidget() == demuxing_page) {
+            input_list->clear();
+            fake_file.clear();
+
+            container_widget->setCurrentWidget(indexing_page);
+        }
 
         for (int i = 0; i < file_names.size(); i++) {
             input_list->addItem(file_names[i]);
@@ -630,8 +649,7 @@ GUIWindow::GUIWindow(QWidget *parent)
             stop_processing = true;
         }
 
-        container_widget->setEnabled(working);
-        start_stop_button->setText(working ? "&Engage" : "Canc&el");
+        enableInterface(working);
 
         if (!working) {
             if (container_widget->currentWidget() == indexing_page)
@@ -639,6 +657,62 @@ GUIWindow::GUIWindow(QWidget *parent)
             else if (container_widget->currentWidget() == demuxing_page)
                 startDemuxing();
         }
+    });
+
+    connect(open_action, &QAction::triggered, add_button, &QPushButton::click);
+
+    connect(quit_action, &QAction::triggered, this, &GUIWindow::close);
+
+    connect(about_action, &QAction::triggered, [this] () {
+        unsigned lavf = avformat_version();
+        unsigned lavc = avcodec_version();
+        unsigned lavu = avutil_version();
+
+        QString about = QStringLiteral(
+            "<a href='https://github.com/dubhater/D2VWitch'>https://github.com/dubhater/D2VWitch</a><br />"
+            "<br />"
+            "Copyright (c) 2016, John Smith<br />"
+            "<br />"
+            "Permission to use, copy, modify, and/or distribute this software for "
+            "any purpose with or without fee is hereby granted, provided that the "
+            "above copyright notice and this permission notice appear in all copies.<br />"
+            "<br />"
+            "THE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL "
+            "WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED "
+            "WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR "
+            "BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES "
+            "OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, "
+            "WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, "
+            "ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS "
+            "SOFTWARE.<br />"
+            "<br />"
+            "D2V Witch version: %1<br />"
+            "libavformat version: %2.%3.%4<br />"
+            "libavcodec version: %5.%6.%7<br />"
+            "libavutil version: %8.%9.%10<br />"
+            "<br />"
+            "libavformat configuration:<br />"
+            "%11<br />"
+            "<br />"
+            "libavcodec configuration:<br />"
+            "%12<br />"
+            "<br />"
+            "libavutil configuration:<br />"
+            "%13<br />"
+        );
+        about = about.arg(PACKAGE_VERSION);
+        about = about.arg((lavf >> 16) & 0xff).arg((lavf >> 8) & 0xff).arg(lavf & 0xff);
+        about = about.arg((lavc >> 16) & 0xff).arg((lavc >> 8) & 0xff).arg(lavc & 0xff);
+        about = about.arg((lavu >> 16) & 0xff).arg((lavu >> 8) & 0xff).arg(lavu & 0xff);
+        about = about.arg(avformat_configuration());
+        about = about.arg(avcodec_configuration());
+        about = about.arg(avutil_configuration());
+
+        QMessageBox::about(this, QStringLiteral("About D2V Witch"), about);
+    });
+
+    connect(aboutqt_action, &QAction::triggered, [this] () {
+        QMessageBox::aboutQt(this);
     });
 
 
@@ -709,6 +783,14 @@ GUIWindow::GUIWindow(QWidget *parent)
     setCentralWidget(central_widget);
 
 
+    file_menu->addAction(open_action);
+    file_menu->addSeparator();
+    file_menu->addAction(quit_action);
+
+    help_menu->addAction(about_action);
+    help_menu->addAction(aboutqt_action);
+
+
     // Fix broken tab order. It's unclear why video_frame_slider isn't in this position already,
     // since it is constructed after video_frame_spin.
     QWidget::setTabOrder(video_frame_spin, video_frame_slider);
@@ -773,8 +855,7 @@ void GUIWindow::indexingFinished(D2V new_d2v) {
         logMessage(QStringLiteral("Indexing cancelled by user."));
     }
 
-    start_stop_button->setText(QStringLiteral("&Engage"));
-    container_widget->setEnabled(true);
+    enableInterface(true);
 
     if (!f.seek(0))
         logMessage(QString::fromStdString(f.getError()));
@@ -797,8 +878,7 @@ void GUIWindow::demuxingFinished(D2V new_d2v) {
         if (!demuxed_fake_file.open()) {
             errorPopup(demuxed_fake_file.getError());
 
-            start_stop_button->setText("&Engage");
-            container_widget->setEnabled(true);
+            enableInterface(true);
 
             if (!f.seek(0))
                 logMessage(QString::fromStdString(f.getError()));
@@ -811,8 +891,7 @@ void GUIWindow::demuxingFinished(D2V new_d2v) {
         if (!demuxed_f.initFormat(demuxed_fake_file)) {
             errorPopup(demuxed_f.getError());
 
-            start_stop_button->setText("&Engage");
-            container_widget->setEnabled(true);
+            enableInterface(true);
 
             if (!f.seek(0))
                 logMessage(QString::fromStdString(f.getError()));
@@ -827,8 +906,7 @@ void GUIWindow::demuxingFinished(D2V new_d2v) {
         if (!new_d2v_file) {
             errorPopup(QStringLiteral("Failed to open d2v file '%1' for writing: %2").arg(new_d2v_name).arg(strerror(errno)));
 
-            start_stop_button->setText("&Engage");
-            container_widget->setEnabled(true);
+            enableInterface(true);
 
             if (!f.seek(0))
                 logMessage(QString::fromStdString(f.getError()));
@@ -861,8 +939,7 @@ void GUIWindow::demuxingFinished(D2V new_d2v) {
         logMessage(QStringLiteral("Video demuxing cancelled by user."));
     }
 
-    start_stop_button->setText(QStringLiteral("&Engage"));
-    container_widget->setEnabled(true);
+    enableInterface(true);
 
     if (!f.seek(0))
         logMessage(QString::fromStdString(f.getError()));
@@ -1125,6 +1202,13 @@ void GUIWindow::dropEvent(QDropEvent *event) {
     inputFilesUpdated();
 
     event->acceptProposedAction();
+}
+
+
+void GUIWindow::enableInterface(bool enable) {
+    container_widget->setEnabled(enable);
+    menuBar()->setEnabled(enable);
+    start_stop_button->setText(enable ? "&Engage" : "Canc&el");
 }
 
 

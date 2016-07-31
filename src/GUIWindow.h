@@ -104,6 +104,7 @@ class GUIWindow : public QMainWindow {
     void createVapourSynthFilterChain();
     void dragEnterEvent(QDragEnterEvent *event);
     void dropEvent(QDropEvent *event);
+    void enableInterface(bool enable);
 
 public:
     explicit GUIWindow(QWidget *parent = 0);
