@@ -1,4 +1,4 @@
-v2 (tbd)
+v2 (20161209)
 =============
 
 * Rename the executable from ``D2VWitch`` to ``d2vwitch`` because no
