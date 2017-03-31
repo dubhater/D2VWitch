@@ -487,7 +487,7 @@ GUIWindow::GUIWindow(QWidget *parent)
     connect(input_list, &ListWidget::deletePressed, remove_button, &QPushButton::click);
 
     connect(add_button, &QPushButton::clicked, [this] () {
-        QStringList file_names = QFileDialog::getOpenFileNames(this, "Open video files", "", "", nullptr, QFileDialog::DontUseNativeDialog);
+        QStringList file_names = QFileDialog::getOpenFileNames(this, "Open video files");
 
         if (!file_names.size())
             return;
@@ -594,7 +594,7 @@ GUIWindow::GUIWindow(QWidget *parent)
     });
 
     connect(d2v_button, &QPushButton::clicked, [this] () {
-        QString file_name = QFileDialog::getSaveFileName(this, "Save d2v file", "", "", nullptr, QFileDialog::DontUseNativeDialog);
+        QString file_name = QFileDialog::getSaveFileName(this, "Save d2v file");
 
         if (file_name.isEmpty())
             return;
