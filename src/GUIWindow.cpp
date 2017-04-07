@@ -46,7 +46,7 @@ Q_DECLARE_METATYPE(D2V)
 enum DataRoles {
     FileNameSuffix = Qt::UserRole,
     StreamIndex,
-    AudioDecoderOpened
+    DecoderOpened
 };
 
 
@@ -97,7 +97,7 @@ void GUIWindow::setContainerError(bool error) {
 
     if (error) {
         style_sheet = QStringLiteral("QListWidget { background: red }");
-        tool_tip = QStringLiteral("Unsupported container format. Only raw MPEG 1/2 elementary streams, program streams, transport streams, and PVA streams are supported."); /// this message should be shared with the CLI.
+        tool_tip = QStringLiteral("Unsupported container format. Only raw MPEG 1/2 elementary streams, program streams, transport streams, PVA streams, and H264 elementary streams are supported."); /// this message should be shared with the CLI.
     }
 
     input_list->setStyleSheet(style_sheet);
@@ -133,7 +133,7 @@ void GUIWindow::setVideoError(QRadioButton *button, bool error) {
 
     if (error) {
         style_sheet = QStringLiteral("QRadioButton { background: red }");
-        tool_tip = QStringLiteral("Unsupported video format. Only MPEG 1 and MPEG 2 are supported."); /// this message should be shared with the CLI.
+        tool_tip = QStringLiteral("Unsupported video format. Only MPEG 1, MPEG 2, and H264 are supported."); /// this message should be shared with the CLI.
     }
 
     button->setStyleSheet(style_sheet);
@@ -212,10 +212,11 @@ void GUIWindow::inputFilesUpdated() {
 
             QListWidgetItem *item = new QListWidgetItem;
             item->setData(StreamIndex, i);
+//            item->setData(DecoderOpened, f.initVideoCodec(i));
             video_list->addItem(item);
             QRadioButton *track_radio = new QRadioButton(track_text);
             track_radio->setFocusPolicy(Qt::NoFocus);
-            setVideoError(track_radio, !D2V::isSupportedVideoCodecID(f.fctx->streams[i]->codec->codec_id));
+//            setVideoError(track_radio, !D2V::isSupportedVideoCodecID(f.fctx->streams[i]->codec->codec_id));
             video_group->addButton(track_radio, i);
             video_list->setItemWidget(item, track_radio);
         } else if (f.fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
@@ -237,7 +238,7 @@ void GUIWindow::inputFilesUpdated() {
             QListWidgetItem *item = new QListWidgetItem(d2v_edit->text() + suffix);
             item->setData(FileNameSuffix, suffix);
             item->setData(StreamIndex, i);
-            item->setData(AudioDecoderOpened, f.initAudioCodec(i));
+            item->setData(DecoderOpened, f.initAudioCodec(i));
             item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
             item->setCheckState(Qt::Unchecked);
             audio_list->addItem(item);
@@ -604,9 +605,11 @@ GUIWindow::GUIWindow(QWidget *parent)
 
     connect(video_group, static_cast<void (QButtonGroup::*)(int, bool)>(&QButtonGroup::buttonToggled), [this] (int id, bool checked) {
         if (checked) {
-            video_okay = D2V::isSupportedVideoCodecID(f.fctx->streams[id]->codec->codec_id);
+            video_okay = D2V::isSupportedVideoCodecID(f.fctx->streams[id]->codec->codec_id) && f.initVideoCodec(id);
             maybeEnableEngageButton();
         }
+
+        setVideoError((QRadioButton *)video_group->button(id), !video_okay && checked);
     });
 
     connect(audio_list, &QListWidget::itemChanged, [this] (QListWidgetItem *) {
@@ -614,7 +617,7 @@ GUIWindow::GUIWindow(QWidget *parent)
 
         for (int i = 0; i < audio_list->count(); i++) {
             QListWidgetItem *item = audio_list->item(i);
-            bool decoder_okay = (item->checkState() == Qt::Unchecked) || item->data(AudioDecoderOpened).toBool();
+            bool decoder_okay = (item->checkState() == Qt::Unchecked) || item->data(DecoderOpened).toBool();
             if (!decoder_okay)
                 failed_decoders.push_back(f.fctx->streams[item->data(StreamIndex).toInt()]->id);
         }

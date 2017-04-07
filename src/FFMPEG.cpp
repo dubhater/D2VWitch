@@ -26,6 +26,7 @@ FFMPEG::FFMPEG()
     , fctx(nullptr)
     , avcodec(nullptr)
     , avctx(nullptr)
+    , parser(nullptr)
 { }
 
 
@@ -87,7 +88,16 @@ bool FFMPEG::initFormat(FakeFile &fake_file) {
 }
 
 
-bool FFMPEG::initVideoCodec(AVCodecID video_codec_id) {
+bool FFMPEG::initVideoCodec(int stream_index) {
+    if (!fctx) {
+        error = "Must call initFormat before initVideoCodec.";
+        return false;
+    }
+
+    deinitVideoCodec();
+
+    AVCodecID video_codec_id = fctx->streams[stream_index]->codec->codec_id;
+
     avcodec = avcodec_find_decoder(video_codec_id);
     if (!avcodec) {
         error = "Couldn't find decoder for ";
@@ -101,10 +111,24 @@ bool FFMPEG::initVideoCodec(AVCodecID video_codec_id) {
         return false;
     }
 
+    if (avcodec_copy_context(avctx, fctx->streams[stream_index]->codec) < 0) {
+        error = "Couldn't copy video codec parameters.";
+        return false;
+    }
+
     if (avcodec_open2(avctx, avcodec, nullptr) < 0) {
         error = "Couldn't open AVCodecContext for the video decoder.";
         return false;
     }
+
+    parser = av_parser_init(video_codec_id);
+    if (!parser) {
+        error = "Couldn't initialise parser for ";
+        error += avcodec_get_name(video_codec_id);
+        return false;
+    }
+
+    parser->flags = PARSER_FLAG_COMPLETE_FRAMES;
 
     return true;
 }
@@ -152,11 +176,22 @@ bool FFMPEG::initAudioCodecs() {
 }
 
 
-void FFMPEG::cleanup() {
+void FFMPEG::deinitVideoCodec() {
+    if (parser) {
+        av_parser_close(parser);
+        parser = nullptr;
+    }
+
+
     if (avctx) {
         avcodec_close(avctx);
         avcodec_free_context(&avctx);
     }
+}
+
+
+void FFMPEG::cleanup() {
+    deinitVideoCodec();
 
 
     if (fctx)

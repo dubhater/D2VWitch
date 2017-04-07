@@ -1,8 +1,28 @@
 Description
 ===========
 
-D2V Witch indexes MPEG (1, 2) streams and writes D2V files. These can
+D2V Witch indexes various video streams and writes D2V files. These can
 be used with the VapourSynth plugin d2vsource.
+
+Supported container formats:
+
+* MPEG elementary streams
+
+* MPEG program streams (aka DVD)
+
+* MPEG transport streams (aka Blu-ray and TV captures)
+
+* PVA streams.
+
+* H264 elementary streams
+
+Supported video codecs:
+
+* MPEG 1
+
+* MPEG 2
+
+* H264
 
 The executable is both a console application and a graphical one. The
 graphical interface is shown if the command line parameters passed
@@ -69,7 +89,7 @@ The usual steps work::
 Requirements:
     - A C++11 compiler
 
-    - FFmpeg (Libav probably works too)
+    - FFmpeg (Libav maybe works too)
 
     - Qt 5.2, or maybe newer
 

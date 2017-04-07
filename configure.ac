@@ -1,4 +1,4 @@
-AC_INIT([D2VWitch], [2], [https://github.com/dubhater/D2VWitch/issues], [D2VWitch], [https://github.com/dubhater/D2VWitch])
+AC_INIT([D2VWitch], [3], [https://github.com/dubhater/D2VWitch/issues], [D2VWitch], [https://github.com/dubhater/D2VWitch])
 
 : ${CFLAGS=""}
 : ${CXXFLAGS=""}
