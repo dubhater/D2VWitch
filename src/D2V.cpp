@@ -18,6 +18,7 @@ SOFTWARE.
 */
 
 
+#include <algorithm>
 #include <atomic>
 #include <cinttypes>
 #include <unordered_set>
@@ -40,23 +41,31 @@ void D2V::clearDataLine() {
     line.skip = 0;
     line.vob = 0;
     line.cell = 0;
-    line.flags.clear();
+    line.pictures.clear();
 }
 
 
 bool D2V::isDataLineNull() const {
-    return !(line.flags.size() && (line.info & INFO_BIT11));
+    return !(line.pictures.size() && (line.info & INFO_BIT11));
 }
 
 
 void D2V::reorderDataLineFlags() {
-    if (!line.flags.size())
+    if (!line.pictures.size())
         return;
 
-    for (size_t i = 1; i < line.flags.size(); i++) {
-        if ((line.flags[i - 1] & FLAGS_B_PICTURE) != FLAGS_B_PICTURE &&
-                (line.flags[i] & FLAGS_B_PICTURE) == FLAGS_B_PICTURE)
-            std::swap(line.flags[i - 1], line.flags[i]);
+    if (video_stream->codec->codec_id == AV_CODEC_ID_H264) {
+        auto cmp = [] (const Picture &p1, const Picture &p2) -> bool {
+            return p1.output_picture_number < p2.output_picture_number;
+        };
+
+        std::sort(line.pictures.begin(), line.pictures.end(), cmp);
+    } else {
+        for (size_t i = 1; i < line.pictures.size(); i++) {
+            if ((line.pictures[i - 1].flags & FLAGS_B_PICTURE) != FLAGS_B_PICTURE &&
+                    (line.pictures[i].flags & FLAGS_B_PICTURE) == FLAGS_B_PICTURE)
+                std::swap(line.pictures[i - 1], line.pictures[i]);
+        }
     }
 }
 
@@ -64,7 +73,9 @@ void D2V::reorderDataLineFlags() {
 bool D2V::printHeader() {
     std::string header;
 
-    header += "DGIndexProjectFile16\n";
+    header += "DGIndexProjectFile";
+    header += std::to_string(video_stream->codec->codec_id == AV_CODEC_ID_H264 ? 42 : 16) + "\n";
+
     header += std::to_string(fake_file->size()) + "\n";
 
     for (auto it = fake_file->cbegin(); it != fake_file->cend(); it++)
@@ -108,6 +119,8 @@ bool D2V::printSettings() {
         mpeg_type = 1;
     else if (video_stream->codec->codec_id == AV_CODEC_ID_MPEG2VIDEO)
         mpeg_type = 2;
+    else if (video_stream->codec->codec_id == AV_CODEC_ID_H264)
+        mpeg_type = 264;
 
     int yuvrgb_scale = input_range == ColourRangeLimited ? 1 : 0;
 
@@ -169,8 +182,8 @@ bool D2V::printDataLine(const D2V::DataLine &data_line) {
         return false;
     }
 
-    for (auto it = data_line.flags.cbegin(); it != data_line.flags.cend(); it++) {
-        if (fprintf(d2v_file, " %x", (int)*it) < 0) {
+    for (auto it = data_line.pictures.cbegin(); it != data_line.pictures.cend(); it++) {
+        if (fprintf(d2v_file, " %x", (int)it->flags) < 0) {
             error = "Failed to print d2v data line: fprintf() failed.";
             return false;
         }
@@ -181,90 +194,171 @@ bool D2V::printDataLine(const D2V::DataLine &data_line) {
 
 
 bool D2V::handleVideoPacket(AVPacket *packet) {
-    parser.parseData(packet->data, packet->size);
+    Picture picture = { 0, AV_PICTURE_STRUCTURE_UNKNOWN, 0 };
 
-    uint8_t flags = 0;
+    if (f->fctx->streams[packet->stream_index]->codec->codec_id == AV_CODEC_ID_H264) {
+        uint8_t *output_buffer; /// free this?
+        int output_buffer_size;
 
-    if (parser.width <= 0 || parser.height <= 0) {
-        if (log_message)
-            log_message("Skipping frame with invalid dimensions " + std::to_string(parser.width) + "x" + std::to_string(parser.height) + ".", log_data);
+        while (packet->size) {
+            int parsed_bytes = av_parser_parse2(f->parser, f->avctx, &output_buffer, &output_buffer_size,
+                                                packet->data, packet->size,
+                                                packet->pts, packet->dts, packet->pos);
 
-        return true;
-    }
-
-    if (parser.picture_coding_type == MPEGParser::I_PICTURE) {
-        if (!isDataLineNull()) {
-            reorderDataLineFlags();
-            lines.push_back(line);
-            clearDataLine();
+            packet->data += parsed_bytes;
+            packet->size -= parsed_bytes;
         }
 
-        line.info = INFO_BIT11;
-        if (parser.progressive_sequence)
-            line.info |= INFO_PROGRESSIVE_SEQUENCE;
+        if (f->parser->width <= 0 || f->parser->height <= 0) {
+            if (log_message)
+                log_message("Skipping frame with invalid dimensions " + std::to_string(f->parser->width) + "x" + std::to_string(f->parser->height) + ".", log_data);
 
-        if (parser.group_of_pictures_header) {
-            line.info |= INFO_STARTS_NEW_GOP;
-
-            if (parser.closed_gop)
-                line.info |= INFO_CLOSED_GOP;
+            return true;
         }
 
-        line.matrix = parser.matrix_coefficients;
+        picture.output_picture_number = f->parser->output_picture_number;
+        picture.picture_structure = f->parser->picture_structure;
 
-        line.file = fake_file->getFileIndex(packet->pos);
-        line.position = fake_file->getPositionInRealFile(packet->pos);
+        if (f->parser->key_frame) {
+            if (!isDataLineNull()) {
+                reorderDataLineFlags();
+                lines.push_back(line);
+                clearDataLine();
+            }
 
-        flags = FLAGS_I_PICTURE | FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
+            line.info = INFO_BIT11 | INFO_STARTS_NEW_GOP;
 
-        if (progress_report)
-            progress_report(packet->pos, fake_file->getTotalSize(), progress_data);
-    } else if (parser.picture_coding_type == MPEGParser::P_PICTURE) {
-        flags = FLAGS_P_PICTURE | FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
-    } else if (parser.picture_coding_type == MPEGParser::B_PICTURE) {
-        flags = FLAGS_B_PICTURE;
+            int64_t colorspace;
+            if (av_opt_get_int(f->avctx, "colorspace", 0, &colorspace) < 0)
+                colorspace = AVCOL_SPC_UNSPECIFIED;
+            line.matrix = colorspace;
 
-        int reference_pictures = 0;
-        for (auto it = line.flags.cbegin(); it != line.flags.cend(); it++) {
-            uint8_t frame_type = *it & FLAGS_B_PICTURE;
+            line.position = packet->pos;
 
-            if (frame_type == FLAGS_I_PICTURE || frame_type == FLAGS_P_PICTURE)
-                reference_pictures++;
+            picture.flags = FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
+
+            if (progress_report)
+                progress_report(packet->pos, fake_file->getTotalSize(), progress_data);
         }
 
+        if (f->parser->pict_type == AV_PICTURE_TYPE_I)
+            picture.flags |= FLAGS_I_PICTURE;
+        else if (f->parser->pict_type == AV_PICTURE_TYPE_P)
+            picture.flags |= FLAGS_P_PICTURE;
+        else if (f->parser->pict_type == AV_PICTURE_TYPE_B)
+            picture.flags |= FLAGS_B_PICTURE;
+        else {
+            if (log_message)
+                log_message(std::string("Encountered unknown picture type ") + av_get_picture_type_char((AVPictureType)f->parser->pict_type) + " (" + std::to_string(f->parser->pict_type) + ").", log_data);
+        }
 
-        // av_read_frame returns *frames*, so this works fine even when picture_structure is "field",
-        // i.e. when the pictures in the mpeg2 stream are individual fields.
-        if (reference_pictures >= 2) {
-            flags |= FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
+        if (f->parser->repeat_pict > 1)
+            picture.flags |= FLAGS_RFF;
+
+        if (f->parser->picture_structure == AV_PICTURE_STRUCTURE_FRAME &&
+            (f->parser->field_order == AV_FIELD_TT || f->parser->repeat_pict == 5))
+            picture.flags |= FLAGS_TFF;
+
+        if (f->parser->picture_structure == AV_PICTURE_STRUCTURE_FRAME &&
+            f->parser->field_order == AV_FIELD_PROGRESSIVE)
+            picture.flags |= FLAGS_PROGRESSIVE;
+
+
+        // Handle interlaced crap by pretending we have frames in the stream, not fields.
+        Picture &previous_picture = line.pictures.back();
+        if (line.pictures.size() &&
+            f->parser->picture_structure != AV_PICTURE_STRUCTURE_FRAME &&
+            previous_picture.picture_structure != AV_PICTURE_STRUCTURE_FRAME &&
+            previous_picture.output_picture_number == f->parser->output_picture_number - 1) {
+
+            if (f->parser->picture_structure == AV_PICTURE_STRUCTURE_TOP_FIELD)
+                previous_picture.flags &= ~FLAGS_TFF;
+            else
+                previous_picture.flags |= FLAGS_TFF;
+
+            // No RFF when the coded pictures are fields.
+            previous_picture.flags &= ~FLAGS_RFF;
+
+            previous_picture.picture_structure = AV_PICTURE_STRUCTURE_FRAME;
+
+            // Skip adding this picture to the list.
+            return true;
+        }
+    } else { // MPEG 1/2
+        parser.parseData(packet->data, packet->size);
+
+        if (parser.width <= 0 || parser.height <= 0) {
+            if (log_message)
+                log_message("Skipping frame with invalid dimensions " + std::to_string(parser.width) + "x" + std::to_string(parser.height) + ".", log_data);
+
+            return true;
+        }
+
+        if (parser.picture_coding_type == MPEGParser::I_PICTURE) {
+            if (!isDataLineNull()) {
+                reorderDataLineFlags();
+                lines.push_back(line);
+                clearDataLine();
+            }
+
+            line.info = INFO_BIT11;
+            if (parser.progressive_sequence)
+                line.info |= INFO_PROGRESSIVE_SEQUENCE;
+
+            if (parser.group_of_pictures_header) {
+                line.info |= INFO_STARTS_NEW_GOP;
+
+                if (parser.closed_gop)
+                    line.info |= INFO_CLOSED_GOP;
+            }
+
+            line.matrix = parser.matrix_coefficients;
+
+            line.position = packet->pos;
+
+            picture.flags = FLAGS_I_PICTURE | FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
+
+            if (progress_report)
+                progress_report(packet->pos, fake_file->getTotalSize(), progress_data);
+        } else if (parser.picture_coding_type == MPEGParser::P_PICTURE) {
+            picture.flags = FLAGS_P_PICTURE | FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
+        } else if (parser.picture_coding_type == MPEGParser::B_PICTURE) {
+            picture.flags = FLAGS_B_PICTURE;
+
+            int reference_pictures = 0;
+            for (auto it = line.pictures.cbegin(); it != line.pictures.cend(); it++) {
+                uint8_t frame_type = it->flags & FLAGS_B_PICTURE;
+
+                if (frame_type == FLAGS_I_PICTURE || frame_type == FLAGS_P_PICTURE)
+                    reference_pictures++;
+            }
+
+
+            // av_read_frame returns *frames*, so this works fine even when picture_structure is "field",
+            // i.e. when the pictures in the mpeg2 stream are individual fields.
+            if (reference_pictures >= 2) {
+                picture.flags |= FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
+            } else {
+                line.info &= ~INFO_CLOSED_GOP;
+            }
         } else {
-            line.info &= ~INFO_CLOSED_GOP;
-        }
-    } else {
-        if (log_message)
-            log_message("Skipping unknown picture type " + std::to_string(parser.picture_coding_type) + ".", log_data);
+            if (log_message)
+                log_message("Skipping unknown picture type " + std::to_string(parser.picture_coding_type) + ".", log_data);
 
-        return true;
+            return true;
+        }
+
+        if (parser.repeat_first_field)
+            picture.flags |= FLAGS_RFF;
+
+        if (parser.top_field_first)
+            picture.flags |= FLAGS_TFF;
+
+        if ((line.info & INFO_PROGRESSIVE_SEQUENCE) || parser.progressive_frame)
+            picture.flags |= FLAGS_PROGRESSIVE;
     }
 
-    if (parser.repeat_first_field)
-        flags |= FLAGS_RFF;
-
-    if (parser.top_field_first)
-        flags |= FLAGS_TFF;
-
-    if ((line.info & INFO_PROGRESSIVE_SEQUENCE) || parser.progressive_frame)
-        flags |= FLAGS_PROGRESSIVE;
-
-    line.flags.push_back(flags);
-
-    stats.video_frames++;
-    if (flags & FLAGS_PROGRESSIVE)
-        stats.progressive_frames++;
-    if (flags & FLAGS_TFF)
-        stats.tff_frames++;
-    if (flags & FLAGS_RFF)
-        stats.rff_frames++;
+    line.pictures.push_back(picture);
 
     return true;
 }
@@ -415,10 +509,35 @@ void D2V::index() {
         av_free_packet(&packet);
     }
 
+
+    // If the last picture in the stream is an orphan field, discard it. lavc would not like it.
+    if (line.pictures.size() &&
+        line.pictures.back().picture_structure != AV_PICTURE_STRUCTURE_FRAME)
+        line.pictures.pop_back();
+
+
+    // Handle the very last GOP, I guess.
     if (!isDataLineNull()) {
         reorderDataLineFlags();
         lines.push_back(line);
         clearDataLine();
+    }
+
+
+    // Collect stats.
+    for (size_t i = 0; i < lines.size(); i++) {
+        stats.video_frames += lines[i].pictures.size();
+
+        for (size_t j = 0; j < lines[i].pictures.size(); j++) {
+            const Picture &picture = lines[i].pictures[j];
+
+            if (picture.flags & FLAGS_PROGRESSIVE)
+                stats.progressive_frames++;
+            if (picture.flags & FLAGS_TFF)
+                stats.tff_frames++;
+            if (picture.flags & FLAGS_RFF)
+                stats.rff_frames++;
+        }
     }
 
 
@@ -427,6 +546,136 @@ void D2V::index() {
         fclose(d2v_file);
         closeAudioFiles(audio_files, f->fctx);
         return;
+    }
+
+
+    // Here we must make sure d2vsource can actually obtain every keyframe.
+    // If it can't, we try to find a better location towards the previous keyframe.
+    // If somehow that fails, we move the offending line's frames to the previous line.
+    // At least h264 in mpegts requires this.
+    FakeFile::seek(fake_file, 0, SEEK_SET);
+    FFMPEG f2;
+    if (!f2.initFormat(*fake_file)) {
+        result = ProcessingError;
+        error = "Error while testing keyframe locations: " + f2.getError();
+        fclose(d2v_file);
+        closeAudioFiles(audio_files, f->fctx);
+        return;
+    }
+
+    av_init_packet(&packet);
+
+    for (size_t i = 0; i < lines.size(); ) {
+        // Report progress because this takes a while. Especially with slow hard drives, probably.
+        if (progress_report)
+            progress_report((int64_t)i, (int64_t)lines.size(), progress_data);
+
+        // Same reason.
+        if (stop_processing) {
+            stop_processing = false;
+            result = ProcessingCancelled;
+            fclose(d2v_file);
+            closeAudioFiles(audio_files, f->fctx);
+            return;
+        }
+
+        int64_t target = lines[i].position;
+
+        fake_file->setOffsetFromRealStart(target);
+        FakeFile::seek(fake_file, 0, SEEK_SET);
+        avformat_seek_file(f2.fctx, video_stream->index, INT64_MIN, 0, INT64_MAX, AVSEEK_FLAG_BYTE);
+
+
+        do {
+            av_free_packet(&packet);
+            av_read_frame(f2.fctx, &packet);
+        } while (f2.fctx->streams[packet.stream_index]->id != video_stream->id);
+
+        int64_t position = packet.pos;
+
+        av_free_packet(&packet);
+
+        bool invalid_seek_point = position != 0;
+
+        if (invalid_seek_point) {
+            int64_t previous_target = i ? lines[i - 1].position : -1;
+
+            // Binary search, yay.
+            int64_t minimum = previous_target;
+            int64_t maximum = target;
+
+            while (maximum - minimum > 1) {
+                int64_t middle = minimum + (maximum - minimum) / 2;
+
+                fake_file->setOffsetFromRealStart(middle);
+                FakeFile::seek(fake_file, 0, SEEK_SET);
+                avformat_seek_file(f2.fctx, video_stream->index, INT64_MIN, 0, INT64_MAX, AVSEEK_FLAG_BYTE);
+
+
+                do {
+                    av_free_packet(&packet);
+                    av_read_frame(f2.fctx, &packet);
+                } while (f2.fctx->streams[packet.stream_index]->id != video_stream->id);
+
+                position = packet.pos;
+
+                av_free_packet(&packet);
+
+                if (position == target - middle) { // middle is good
+                    if (log_message)
+                        log_message("Moving keyframe location " + std::to_string(fake_file->getPositionInRealFile(target)) + " to " + std::to_string(fake_file->getPositionInRealFile(middle)) + " (" + std::to_string(position) + " bytes).", log_data);
+
+                    lines[i].position = middle;
+
+                    break;
+                } else if (position > target - middle) { // middle resulted in packet too far to the right
+                    maximum = middle;
+                } else { // middle resulted in packet too far to the left
+                    minimum = middle;
+                }
+            }
+        }
+
+        bool still_invalid_seek_point = invalid_seek_point && lines[i].position == target;
+
+        if (still_invalid_seek_point && i == 0) {
+            std::string message = "Location of first keyframe is unreachable. This should have been impossible.";
+
+            if (target != 0) {
+                message += " Moving it from " + std::to_string(target) + " to 0 even though it's probably pointless.";
+
+                lines[i].position = 0;
+            }
+
+            if (log_message)
+                log_message(message, log_data);
+        }
+
+        if (still_invalid_seek_point && i) {
+            if (log_message)
+                log_message("Fixing unreachable keyframe location " + std::to_string(fake_file->getPositionInRealFile(target)) + ".", log_data);
+
+            for (size_t j = 0; j < lines[i].pictures.size(); j++)
+                lines[i - 1].pictures.push_back(lines[i].pictures[j]);
+
+            lines.erase(lines.cbegin() + i);
+        } else {
+            i++;
+        }
+    }
+    f2.cleanup();
+    fake_file->setOffsetFromRealStart(0);
+    FakeFile::seek(fake_file, 0, SEEK_SET);
+
+
+    // Convert positions in the fake file into positions in the real files.
+    if (fake_file->size() > 1) {
+        for (size_t i = 0; i < lines.size(); i++) {
+            int64_t position = lines[i].position;
+
+            lines[i].file = fake_file->getFileIndex(position);
+            lines[i].position = fake_file->getPositionInRealFile(position);
+        }
     }
 
 
@@ -541,10 +790,10 @@ int D2V::getGOPStartFrame(int frame) {
     int total = 0;
 
     for (size_t i = 0; i < lines.size(); i++) {
-        total += lines[i].flags.size();
+        total += lines[i].pictures.size();
 
         if (frame < total)
-            return total - lines[i].flags.size();
+            return total - lines[i].pictures.size();
     }
 
     return -1;
@@ -555,7 +804,7 @@ int D2V::getNextGOPStartFrame(int frame) {
     int total = 0;
 
     for (size_t i = 0; i < lines.size(); i++) {
-        total += lines[i].flags.size();
+        total += lines[i].pictures.size();
 
         if (frame < total)
             return total;
@@ -569,7 +818,7 @@ int64_t D2V::getGOPStartPosition(int frame) {
     int total = 0;
 
     for (size_t i = 0; i < lines.size(); i++) {
-        total += lines[i].flags.size();
+        total += lines[i].pictures.size();
 
         if (frame < total)
             return lines[i].position;
@@ -583,7 +832,7 @@ int64_t D2V::getNextGOPStartPosition(int frame) {
     int total = 0;
 
     for (size_t i = 0; i < lines.size(); i++) {
-        total += lines[i].flags.size();
+        total += lines[i].pictures.size();
 
         if (frame < total) {
             if (i < lines.size() - 1)
@@ -601,7 +850,7 @@ bool D2V::isOpenGOP(int frame) {
     int total = 0;
 
     for (size_t i = 0; i < lines.size(); i++) {
-        total += lines[i].flags.size();
+        total += lines[i].pictures.size();
 
         if (frame < total)
             return !(lines[i].info & INFO_CLOSED_GOP);
@@ -615,7 +864,7 @@ int D2V::getNumFrames() {
     int total = 0;
 
     for (size_t i = 0; i < lines.size(); i++)
-        total += lines[i].flags.size();
+        total += lines[i].pictures.size();
 
     return total;
 }
@@ -623,10 +872,11 @@ int D2V::getNumFrames() {
 
 int D2V::getStreamType(const char *name) {
     std::unordered_map<std::string, int> stream_types_map = {
-        { "mpegvideo", ELEMENTARY_STREAM },
-        { "mpeg", PROGRAM_STREAM },
-        { "mpegts", TRANSPORT_STREAM },
-        { "pva", PVA_STREAM }
+        { "mpegvideo",  ELEMENTARY_STREAM },
+        { "h264",       ELEMENTARY_STREAM },
+        { "mpeg",       PROGRAM_STREAM },
+        { "mpegts",     TRANSPORT_STREAM },
+        { "pva",        PVA_STREAM }
     };
 
     int stream_type;
@@ -642,10 +892,10 @@ int D2V::getStreamType(const char *name) {
 
 
 bool D2V::isSupportedVideoCodecID(AVCodecID id) {
-    /// must be shared with the CLI.
     std::unordered_set<int> supported_codec_ids = {
         AV_CODEC_ID_MPEG1VIDEO,
-        AV_CODEC_ID_MPEG2VIDEO
+        AV_CODEC_ID_MPEG2VIDEO,
+        AV_CODEC_ID_H264
     };
 
     return supported_codec_ids.count(id);

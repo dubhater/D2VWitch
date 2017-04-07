@@ -35,6 +35,7 @@ FakeFile::~FakeFile() {
 bool FakeFile::open() {
     total_size = 0;
     current_position = 0;
+    offset_from_real_start = 0;
     current_file = cbegin();
 
     auto it = begin();
@@ -102,27 +103,40 @@ const std::string &FakeFile::getError() const {
 }
 
 
-int FakeFile::getFileIndex(int64_t position) const {
+int FakeFile::getFileIndex(int64_t position_in_fake_file) const {
     for (size_t i = 0; i < size(); i++) {
-        if (position < at(i).size)
+        if (position_in_fake_file < at(i).size)
             return i;
         else
-            position -= at(i).size;
+            position_in_fake_file -= at(i).size;
     }
 
     return -1;
 }
 
 
-int64_t FakeFile::getPositionInRealFile(int64_t position) const {
+int64_t FakeFile::getPositionInRealFile(int64_t position_in_fake_file) const {
     for (size_t i = 0; i < size(); i++) {
-        if (position < at(i).size)
-            return position;
+        if (position_in_fake_file < at(i).size)
+            return position_in_fake_file;
         else
-            position -= at(i).size;
+            position_in_fake_file -= at(i).size;
     }
 
     return -1;
+}
+
+
+int64_t FakeFile::getPositionInFakeFile(int64_t position_in_real_file, int file_index) const {
+    for (int i = 0; i < file_index; i++)
+        position_in_real_file += at(i).size;
+
+    return position_in_real_file;
+}
+
+
+void FakeFile::setOffsetFromRealStart(int64_t offset) {
+    offset_from_real_start = offset;
 }
 
 
@@ -133,8 +147,9 @@ int64_t FakeFile::seek(void *opaque, int64_t offset, int whence) {
     FakeFile *ff = (FakeFile *)opaque;
 
     if (whence == AVSEEK_SIZE) {
-        return ff->total_size;
+        return ff->total_size - ff->offset_from_real_start;
     } else if (whence == SEEK_SET) {
+        offset += ff->offset_from_real_start;
     } else if (whence == SEEK_CUR) {
         offset += ff->current_position;
     } else if (whence == SEEK_END) {
@@ -167,7 +182,7 @@ int64_t FakeFile::seek(void *opaque, int64_t offset, int whence) {
     }
 
     ff->current_position = offset;
-    return ff->current_position;
+    return ff->current_position - ff->offset_from_real_start;
 }
 
 

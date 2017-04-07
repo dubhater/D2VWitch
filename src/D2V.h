@@ -132,6 +132,13 @@ private:
     };
 
 
+    struct Picture {
+        int output_picture_number; // Only used for h264.
+        AVPictureStructure picture_structure; // Only used for h264.
+        uint8_t flags;
+    };
+
+
     struct DataLine {
         int info;
         int matrix;
@@ -140,7 +147,7 @@ private:
         int skip;
         int vob;
         int cell;
-        std::vector<uint8_t> flags;
+        std::vector<Picture> pictures;
 
         DataLine()
             : info(0)
@@ -150,7 +157,7 @@ private:
             , skip(0)
             , vob(0)
             , cell(0)
-            , flags{ }
+            , pictures{ }
         { }
     };
 

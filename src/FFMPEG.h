@@ -38,10 +38,13 @@ class FFMPEG {
 
     std::string error;
 
+    void deinitVideoCodec();
+
 public:
     AVFormatContext *fctx;
     AVCodec *avcodec;
     AVCodecContext *avctx;
+    AVCodecParserContext *parser;
     std::unordered_map<int, AVCodecContext *> audio_ctx;
 
     FFMPEG();
@@ -51,7 +54,7 @@ public:
 
     bool initFormat(FakeFile &fake_file);
 
-    bool initVideoCodec(AVCodecID video_codec_id);
+    bool initVideoCodec(int stream_index);
 
     bool initAudioCodec(int stream_index);
 

@@ -42,6 +42,7 @@ struct RealFile {
 class FakeFile : public std::vector<RealFile> {
     int64_t total_size;
     int64_t current_position;
+    int64_t offset_from_real_start; // Only used (non-zero) when verifying the keyframe locations.
     const_iterator current_file;
     std::string error;
 
@@ -59,9 +60,13 @@ public:
 
     const std::string &getError() const;
 
-    int getFileIndex(int64_t position) const;
+    int getFileIndex(int64_t position_in_fake_file) const;
 
-    int64_t getPositionInRealFile(int64_t position) const;
+    int64_t getPositionInRealFile(int64_t position_in_fake_file) const;
+
+    int64_t getPositionInFakeFile(int64_t position_in_real_file, int file_index) const;
+
+    void setOffsetFromRealStart(int64_t offset);
 
     static int64_t seek(void *opaque, int64_t offset, int whence);
 

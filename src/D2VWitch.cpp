@@ -72,8 +72,14 @@ void printWarnings(const std::string &message, void *) {
 
 void printHelp() {
     const char usage[] = R"usage(
-D2V Witch indexes MPEG (1, 2) streams and writes D2V files. These can
+D2V Witch indexes various streams and writes D2V files. These can
 be used with the VapourSynth plugin d2vsource.
+
+Supported container formats: MPEG elementary streams, MPEG program
+streams, MPEG transport streams, PVA streams, H264 elementary
+streams.
+
+Supported video formats: MPEG 1, MPEG 2, H264.
 
 Usage: d2vwitch [options] input_file1 input_file2 ...
 
@@ -585,8 +591,17 @@ int main(int argc, char **_argv) {
     }
 
 
-    // ffmpeg init part 2: audio decoders
+    // ffmpeg init part 2: audio and video decoders
     if (!f.initAudioCodecs()) {
+        fprintf(stderr, "%s\n", f.getError().c_str());
+
+        f.cleanup();
+        fake_file.close();
+
+        return 1;
+    }
+
+    if (!f.initVideoCodec(video_stream->index)) {
         fprintf(stderr, "%s\n", f.getError().c_str());
 
         f.cleanup();
