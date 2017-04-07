@@ -195,7 +195,7 @@ void GUIWindow::inputFilesUpdated() {
     for (unsigned i = 0; i < f.fctx->nb_streams; i++) {
         if (f.fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
             const char *type = "unknown";
-            const AVCodecDescriptor *desc = av_codec_get_codec_descriptor(f.fctx->streams[i]->codec);
+            const AVCodecDescriptor *desc = avcodec_descriptor_get(f.fctx->streams[i]->codec->codec_id);
             if (desc)
                 type = desc->long_name ? desc->long_name : desc->name;
 

@@ -154,7 +154,7 @@ void printInfo(const AVFormatContext *fctx, const FakeFile &fake_file) {
     for (unsigned i = 0; i < fctx->nb_streams; i++) {
         if (fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
             const char *type = "unknown";
-            const AVCodecDescriptor *desc = av_codec_get_codec_descriptor(fctx->streams[i]->codec);
+            const AVCodecDescriptor *desc = avcodec_descriptor_get(fctx->streams[i]->codec->codec_id);
             if (desc)
                 type = desc->long_name ? desc->long_name : desc->name;
 
@@ -175,7 +175,7 @@ void printInfo(const AVFormatContext *fctx, const FakeFile &fake_file) {
     for (unsigned i = 0; i < fctx->nb_streams; i++) {
         if (fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
             const char *type = "unknown";
-            const AVCodecDescriptor *desc = av_codec_get_codec_descriptor(fctx->streams[i]->codec);
+            const AVCodecDescriptor *desc = avcodec_descriptor_get(fctx->streams[i]->codec->codec_id);
             if (desc)
                 type = desc->long_name ? desc->long_name : desc->name;
 
@@ -572,7 +572,7 @@ int main(int argc, char **_argv) {
 
     if (!D2V::isSupportedVideoCodecID(video_stream->codec->codec_id)) {
         const char *type = "unknown";
-        const AVCodecDescriptor *desc = av_codec_get_codec_descriptor(video_stream->codec);
+        const AVCodecDescriptor *desc = avcodec_descriptor_get(video_stream->codec->codec_id);
         if (desc)
             type = desc->long_name ? desc->long_name : desc->name;
 
