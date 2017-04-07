@@ -585,6 +585,17 @@ int main(int argc, char **_argv) {
     }
 
 
+    // ffmpeg init part 2: audio decoders
+    if (!f.initAudioCodecs()) {
+        fprintf(stderr, "%s\n", f.getError().c_str());
+
+        f.cleanup();
+        fake_file.close();
+
+        return 1;
+    }
+
+
     // d2v file opening
     FILE *d2v_file;
     if (cmd.d2v_path == "-") {
@@ -663,22 +674,6 @@ int main(int argc, char **_argv) {
 
                 audio_files.insert({ f.fctx->streams[i]->index, file });
             }
-        }
-    }
-
-
-    /// this should be done before opening any audio files so that no empty files are left behind if this fails.
-    // ffmpeg init part 2: audio decoders
-    if (audio_files.size()) {
-        if (!f.initAudioCodecs()) {
-            fprintf(stderr, "%s\n", f.getError().c_str());
-
-            fclose(d2v_file);
-            closeAudioFiles(audio_files, f.fctx);
-            f.cleanup();
-            fake_file.close();
-
-            return 1;
         }
     }
 
