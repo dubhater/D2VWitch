@@ -221,6 +221,25 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
         return true;
     }
 
+    if (!lines.size() &&
+        !line.pictures.size() &&
+        !f->parser->key_frame) {
+        if (log_message)
+            log_message("Skipping leading non-keyframe.", log_data);
+
+        return true;
+    }
+
+    if (!lines.size() &&
+        line.pictures.size() == 1 &&
+        f->parser->pict_type == AV_PICTURE_TYPE_B &&
+        (f->parser->output_picture_number < line.pictures[0].output_picture_number || codec_id == AV_CODEC_ID_MPEG1VIDEO || codec_id == AV_CODEC_ID_MPEG2VIDEO)) {
+        if (log_message)
+            log_message("Skipping leading B frame. It's probably unusable.", log_data);
+
+        return true;
+    }
+
     picture.output_picture_number = f->parser->output_picture_number;
     picture.picture_structure = f->parser->picture_structure;
 
