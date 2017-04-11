@@ -26,30 +26,41 @@ such things.
 
 #include <cstring>
 
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavutil/opt.h>
+}
+
 #include "MPEGParser.h"
 
 
-MPEGParser::MPEGParser()
-    : width(-1)
-    , height(-1)
-    , progressive_sequence(false)
-{
-    clear();
+enum StartCodes {
+    PICTURE_START_CODE = 0x00,
+    SEQUENCE_HEADER_CODE = 0xb3,
+    EXTENSION_START_CODE = 0xb5,
+    GROUP_START_CODE = 0xb8,
+    SLICE_START_CODE_MIN = 0x01,
+    SLICE_START_CODE_MAX = 0xaf
+};
+
+enum ExtensionStartCodeIdentifier {
+    SEQUENCE_EXTENSION = 0x1,
+    SEQUENCE_DISPLAY_EXTENSION = 0x2,
+    PICTURE_CODING_EXTENSION = 0x8
+};
+
+
+static void clear(AVCodecParserContext *parser, AVCodecContext *avctx) {
+    parser->pict_type = AV_PICTURE_TYPE_NONE;
+    parser->field_order = AV_FIELD_UNKNOWN;
+    parser->repeat_pict = 0;
+    parser->picture_structure = AV_PICTURE_STRUCTURE_UNKNOWN;
+    parser->key_frame = 0;
+    av_opt_set_int(avctx, "colorspace", AVCOL_SPC_UNSPECIFIED, 0);
 }
 
 
-void MPEGParser::clear() {
-    picture_coding_type = 0;
-    top_field_first = false;
-    repeat_first_field = false;
-    progressive_frame = false;
-    group_of_pictures_header = false;
-    closed_gop = false;
-    matrix_coefficients = MATRIX_UNSPECIFIED;
-}
-
-
-const uint8_t *MPEGParser::findStartCode(const uint8_t *data, const uint8_t *data_end, uint32_t *start_code) {
+static const uint8_t *findStartCode(const uint8_t *data, const uint8_t *data_end, uint32_t *start_code) {
     while (data <= data_end - 4) {
         uint32_t bits;
         memcpy(&bits, data, 4);
@@ -66,8 +77,18 @@ const uint8_t *MPEGParser::findStartCode(const uint8_t *data, const uint8_t *dat
 }
 
 
-void MPEGParser::parseData(const uint8_t *data, int data_size) {
-    clear();
+void d2vWitchParseMPEG12Data(AVCodecParserContext *parser, AVCodecContext *avctx, const uint8_t *data, int data_size) {
+    clear(parser, avctx);
+
+    parser->picture_structure = AV_PICTURE_STRUCTURE_FRAME;
+
+    // Maybe not the best idea, but it's really the only thing that needs to be remembered between calls
+    // and not stored in parser or avctx.
+    static int progressive_sequence = 0;
+
+    int sequence_header = 0;
+    int group_of_pictures_header = 0;
+
 
     const uint8_t *data_end = data + data_size;
 
@@ -79,12 +100,17 @@ void MPEGParser::parseData(const uint8_t *data, int data_size) {
         int bytes_left = data_end - data;
 
         if (start_code == PICTURE_START_CODE) {
-            if (bytes_left >= 2)
-                picture_coding_type = (data[1] >> 3) & 7;
+            if (bytes_left >= 2) {
+                parser->pict_type = (data[1] >> 3) & 7;
+
+                parser->key_frame = (parser->pict_type == AV_PICTURE_TYPE_I && sequence_header) || group_of_pictures_header;
+            }
         } else if (start_code == SEQUENCE_HEADER_CODE) {
             if (bytes_left >= 3) {
-                width = (((int)data[0]) << 4) | (data[1] >> 4);
-                height = ((data[1] & 0xf) << 8) | data[2];
+                sequence_header = 1;
+
+                parser->width = (((int)data[0]) << 4) | (data[1] >> 4);
+                parser->height = ((data[1] & 0xf) << 8) | data[2];
             }
         } else if (start_code == EXTENSION_START_CODE) {
             if (bytes_left >= 1) {
@@ -92,11 +118,11 @@ void MPEGParser::parseData(const uint8_t *data, int data_size) {
 
                 if (extension_type == SEQUENCE_EXTENSION) {
                     if (bytes_left >= 3) {
-                        if (width > 0 && height > 0) {
+                        if (parser->width > 0 && parser->height > 0) {
                             int horizontal_size_extension = ((data[1] & 1) << 1) | (data[2] >> 7);
                             int vertical_size_extension = (data[2] >> 5) & 3;
-                            width |= horizontal_size_extension << 12;
-                            height |= vertical_size_extension << 12;
+                            parser->width |= horizontal_size_extension << 12;
+                            parser->height |= vertical_size_extension << 12;
                         }
                         progressive_sequence = data[1] & (1 << 3);
                     }
@@ -106,21 +132,45 @@ void MPEGParser::parseData(const uint8_t *data, int data_size) {
                         if (colour_description && bytes_left >= 4) {
                             // colour_primaries = data[1];
                             // transfer_characteristics = data[2];
-                            matrix_coefficients = data[3];
+                            av_opt_set_int(avctx, "colorspace", data[3], 0);
                         }
                     }
                 } else if (extension_type == PICTURE_CODING_EXTENSION) {
                     if (bytes_left >= 5) {
-                        top_field_first = data[3] & (1 << 7);
-                        repeat_first_field = data[3] & (1 << 1);
-                        progressive_frame = data[4] & (1 << 7);
+                        int top_field_first = data[3] & (1 << 7);
+                        int repeat_first_field = data[3] & (1 << 1);
+                        int progressive_frame = data[4] & (1 << 7);
+
+                        parser->repeat_pict = 1;
+
+                        if (repeat_first_field) {
+                            if (progressive_sequence) {
+                                if (top_field_first)
+                                    parser->repeat_pict = 5;
+                                else
+                                    parser->repeat_pict = 3;
+                            } else if (progressive_frame){
+                                parser->repeat_pict = 2;
+                            }
+                        }
+
+                        if (progressive_sequence) {
+                            parser->field_order = AV_FIELD_PROGRESSIVE;
+                        } else {
+                            if (top_field_first)
+                                parser->field_order = AV_FIELD_TT;
+                            else
+                                parser->field_order = AV_FIELD_BB;
+
+                            if (progressive_frame)
+                                parser->field_order = (AVFieldOrder)(parser->field_order | (AV_FIELD_PROGRESSIVE << 16));
+                        }
                     }
                 }
             }
         } else if (start_code == GROUP_START_CODE) {
             if (bytes_left >= 4) {
-                group_of_pictures_header = true;
-                closed_gop = data[3] & (1 << 6);
+                group_of_pictures_header = 1;
             }
         } else if (start_code == 0xffffffff ||
                    (start_code >= SLICE_START_CODE_MIN && start_code <= SLICE_START_CODE_MAX)) {

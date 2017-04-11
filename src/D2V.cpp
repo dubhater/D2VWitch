@@ -196,7 +196,9 @@ bool D2V::printDataLine(const D2V::DataLine &data_line) {
 bool D2V::handleVideoPacket(AVPacket *packet) {
     Picture picture = { 0, AV_PICTURE_STRUCTURE_UNKNOWN, 0 };
 
-    if (f->fctx->streams[packet->stream_index]->codec->codec_id == AV_CODEC_ID_H264) {
+    AVCodecID codec_id = f->fctx->streams[packet->stream_index]->codec->codec_id;
+
+    if (codec_id == AV_CODEC_ID_H264) {
         uint8_t *output_buffer; /// free this?
         int output_buffer_size;
 
@@ -208,62 +210,80 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
             packet->data += parsed_bytes;
             packet->size -= parsed_bytes;
         }
+    } else {
+        d2vWitchParseMPEG12Data(f->parser, f->avctx, packet->data, packet->size);
+    }
 
-        if (f->parser->width <= 0 || f->parser->height <= 0) {
-            if (log_message)
-                log_message("Skipping frame with invalid dimensions " + std::to_string(f->parser->width) + "x" + std::to_string(f->parser->height) + ".", log_data);
+    if (f->parser->width <= 0 || f->parser->height <= 0) {
+        if (log_message)
+            log_message("Skipping frame with invalid dimensions " + std::to_string(f->parser->width) + "x" + std::to_string(f->parser->height) + ".", log_data);
 
-            return true;
+        return true;
+    }
+
+    picture.output_picture_number = f->parser->output_picture_number;
+    picture.picture_structure = f->parser->picture_structure;
+
+    if (f->parser->key_frame) {
+        if (!isDataLineNull()) {
+            reorderDataLineFlags();
+            lines.push_back(line);
+            clearDataLine();
         }
 
-        picture.output_picture_number = f->parser->output_picture_number;
-        picture.picture_structure = f->parser->picture_structure;
+        line.info = INFO_BIT11 | INFO_STARTS_NEW_GOP;
 
-        if (f->parser->key_frame) {
-            if (!isDataLineNull()) {
-                reorderDataLineFlags();
-                lines.push_back(line);
-                clearDataLine();
-            }
+        int64_t colorspace;
+        if (av_opt_get_int(f->avctx, "colorspace", 0, &colorspace) < 0)
+            colorspace = AVCOL_SPC_UNSPECIFIED;
+        line.matrix = colorspace;
 
-            line.info = INFO_BIT11 | INFO_STARTS_NEW_GOP;
+        line.position = packet->pos;
 
-            int64_t colorspace;
-            if (av_opt_get_int(f->avctx, "colorspace", 0, &colorspace) < 0)
-                colorspace = AVCOL_SPC_UNSPECIFIED;
-            line.matrix = colorspace;
+        picture.flags = FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
 
-            line.position = packet->pos;
+        if (progress_report)
+            progress_report(packet->pos, fake_file->getTotalSize(), progress_data);
+    }
 
-            picture.flags = FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
+    if (f->parser->pict_type == AV_PICTURE_TYPE_I)
+        picture.flags |= FLAGS_I_PICTURE;
+    else if (f->parser->pict_type == AV_PICTURE_TYPE_P)
+        picture.flags |= FLAGS_P_PICTURE;
+    else if (f->parser->pict_type == AV_PICTURE_TYPE_B)
+        picture.flags |= FLAGS_B_PICTURE;
+    else {
+        if (log_message)
+            log_message(std::string("Encountered unknown picture type ") + av_get_picture_type_char((AVPictureType)f->parser->pict_type) + " (" + std::to_string(f->parser->pict_type) + ").", log_data);
+    }
 
-            if (progress_report)
-                progress_report(packet->pos, fake_file->getTotalSize(), progress_data);
-        }
 
-        if (f->parser->pict_type == AV_PICTURE_TYPE_I)
-            picture.flags |= FLAGS_I_PICTURE;
-        else if (f->parser->pict_type == AV_PICTURE_TYPE_P)
-            picture.flags |= FLAGS_P_PICTURE;
-        else if (f->parser->pict_type == AV_PICTURE_TYPE_B)
-            picture.flags |= FLAGS_B_PICTURE;
-        else {
-            if (log_message)
-                log_message(std::string("Encountered unknown picture type ") + av_get_picture_type_char((AVPictureType)f->parser->pict_type) + " (" + std::to_string(f->parser->pict_type) + ").", log_data);
-        }
+    if (codec_id == AV_CODEC_ID_MPEG1VIDEO || codec_id == AV_CODEC_ID_MPEG2VIDEO) {
+        // Frame double or tripling can only happen in sequences marked progressive.
+        if (f->parser->repeat_pict == 3 || f->parser->repeat_pict == 5)
+            line.info |= INFO_PROGRESSIVE_SEQUENCE;
 
-        if (f->parser->repeat_pict > 1)
-            picture.flags |= FLAGS_RFF;
+        // Some evil shit done for the sake of passing through both "progressive_frame" and "top_field_first".
+        bool progressive_frame = (f->parser->field_order >> 16) == AV_FIELD_PROGRESSIVE;
+        f->parser->field_order = (AVFieldOrder)(f->parser->field_order & 0xff);
 
-        if (f->parser->picture_structure == AV_PICTURE_STRUCTURE_FRAME &&
-            (f->parser->field_order == AV_FIELD_TT || f->parser->repeat_pict == 5))
-            picture.flags |= FLAGS_TFF;
-
-        if (f->parser->picture_structure == AV_PICTURE_STRUCTURE_FRAME &&
-            f->parser->field_order == AV_FIELD_PROGRESSIVE)
+        if (progressive_frame)
             picture.flags |= FLAGS_PROGRESSIVE;
+    }
+
+    if (f->parser->repeat_pict > 1)
+        picture.flags |= FLAGS_RFF;
+
+    if (f->parser->picture_structure == AV_PICTURE_STRUCTURE_FRAME &&
+        (f->parser->field_order == AV_FIELD_TT || f->parser->repeat_pict == 5))
+        picture.flags |= FLAGS_TFF;
+
+    if (f->parser->picture_structure == AV_PICTURE_STRUCTURE_FRAME &&
+        f->parser->field_order == AV_FIELD_PROGRESSIVE)
+        picture.flags |= FLAGS_PROGRESSIVE;
 
 
+    if (codec_id == AV_CODEC_ID_H264) {
         // Handle interlaced crap by pretending we have frames in the stream, not fields.
         Picture &previous_picture = line.pictures.back();
         if (line.pictures.size() &&
@@ -284,78 +304,6 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
             // Skip adding this picture to the list.
             return true;
         }
-    } else { // MPEG 1/2
-        parser.parseData(packet->data, packet->size);
-
-        if (parser.width <= 0 || parser.height <= 0) {
-            if (log_message)
-                log_message("Skipping frame with invalid dimensions " + std::to_string(parser.width) + "x" + std::to_string(parser.height) + ".", log_data);
-
-            return true;
-        }
-
-        if (parser.picture_coding_type == MPEGParser::I_PICTURE) {
-            if (!isDataLineNull()) {
-                reorderDataLineFlags();
-                lines.push_back(line);
-                clearDataLine();
-            }
-
-            line.info = INFO_BIT11;
-            if (parser.progressive_sequence)
-                line.info |= INFO_PROGRESSIVE_SEQUENCE;
-
-            if (parser.group_of_pictures_header) {
-                line.info |= INFO_STARTS_NEW_GOP;
-
-                if (parser.closed_gop)
-                    line.info |= INFO_CLOSED_GOP;
-            }
-
-            line.matrix = parser.matrix_coefficients;
-
-            line.position = packet->pos;
-
-            picture.flags = FLAGS_I_PICTURE | FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
-
-            if (progress_report)
-                progress_report(packet->pos, fake_file->getTotalSize(), progress_data);
-        } else if (parser.picture_coding_type == MPEGParser::P_PICTURE) {
-            picture.flags = FLAGS_P_PICTURE | FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
-        } else if (parser.picture_coding_type == MPEGParser::B_PICTURE) {
-            picture.flags = FLAGS_B_PICTURE;
-
-            int reference_pictures = 0;
-            for (auto it = line.pictures.cbegin(); it != line.pictures.cend(); it++) {
-                uint8_t frame_type = it->flags & FLAGS_B_PICTURE;
-
-                if (frame_type == FLAGS_I_PICTURE || frame_type == FLAGS_P_PICTURE)
-                    reference_pictures++;
-            }
-
-
-            // av_read_frame returns *frames*, so this works fine even when picture_structure is "field",
-            // i.e. when the pictures in the mpeg2 stream are individual fields.
-            if (reference_pictures >= 2) {
-                picture.flags |= FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
-            } else {
-                line.info &= ~INFO_CLOSED_GOP;
-            }
-        } else {
-            if (log_message)
-                log_message("Skipping unknown picture type " + std::to_string(parser.picture_coding_type) + ".", log_data);
-
-            return true;
-        }
-
-        if (parser.repeat_first_field)
-            picture.flags |= FLAGS_RFF;
-
-        if (parser.top_field_first)
-            picture.flags |= FLAGS_TFF;
-
-        if ((line.info & INFO_PROGRESSIVE_SEQUENCE) || parser.progressive_frame)
-            picture.flags |= FLAGS_PROGRESSIVE;
     }
 
     line.pictures.push_back(picture);

@@ -173,8 +173,6 @@ private:
     LoggingFunction log_message;
     void *log_data;
 
-    MPEGParser parser;
-
     DataLine line;
 
     Stats stats;
