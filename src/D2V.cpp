@@ -721,6 +721,16 @@ void D2V::index() {
     result = ProcessingFinished;
     fclose(d2v_file);
     closeAudioFiles(audio_files, f->fctx);
+
+    if (log_message) {
+        std::string message;
+        message += "Video frames seen:   " + std::to_string(stats.video_frames) + "\n";
+        message += "    Progressive:     " + std::to_string(stats.progressive_frames) + "\n";
+        message += "    Top field first: " + std::to_string(stats.tff_frames) + "\n";
+        message += "    Repeat:          " + std::to_string(stats.rff_frames);
+
+        log_message(message, log_data);
+    }
 }
 
 
