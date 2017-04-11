@@ -129,7 +129,7 @@ bool D2V::printSettings() {
         width = height = -1;
 
     AVRational sar;
-    if (av_opt_get_q(video_stream->codec, "aspect", 0, &sar) < 0)
+    if (av_opt_get_q(video_stream->codec, "aspect", 0, &sar) < 0 || sar.num < 1 || sar.den < 1)
         sar = { 1, 1 };
     AVRational dar = av_mul_q(av_make_q(width, height), sar);
     av_reduce(&dar.num, &dar.den, dar.num, dar.den, 1024);
