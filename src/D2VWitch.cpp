@@ -705,19 +705,6 @@ int main(int argc, char **_argv) {
         return 1;
     }
 
-    if (!cmd.stay_quiet) {
-        const D2V::Stats &stats = d2v.getStats();
-        fprintf(stderr,
-                "Video frames seen:   %d\n"
-                "    Progressive:     %d\n"
-                "    Top field first: %d\n"
-                "    Repeat:          %d\n",
-                stats.video_frames,
-                stats.progressive_frames,
-                stats.tff_frames,
-                stats.rff_frames);
-    }
-
 
     // some cleanup
     f.cleanup();

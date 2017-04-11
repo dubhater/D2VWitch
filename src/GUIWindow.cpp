@@ -834,13 +834,7 @@ void GUIWindow::indexingFinished(D2V new_d2v) {
     D2V::ProcessingResult result = new_d2v.getResult();
 
     if (result == D2V::ProcessingFinished) {
-        const D2V::Stats &stats = new_d2v.getStats();
-
-        logMessage(QStringLiteral("Finished writing d2v file %1.\n"
-                                  "Video frames seen:   %2\n"
-                                  "    Progressive:     %3\n"
-                                  "    Top field first: %4\n"
-                                  "    Repeat:          %5").arg(QString::fromStdString(new_d2v.getD2VFileName())).arg(stats.video_frames).arg(stats.progressive_frames).arg(stats.tff_frames).arg(stats.rff_frames));
+        logMessage(QStringLiteral("Finished writing d2v file %1.\n").arg(QString::fromStdString(new_d2v.getD2VFileName())));
 
         progress_bar->setValue(progress_bar->maximum());
 
