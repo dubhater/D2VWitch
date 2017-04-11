@@ -175,6 +175,9 @@ private:
 
     DataLine line;
 
+    int64_t previous_pts; // For frame rate guessing.
+    AVRational guessed_frame_rate;
+
     Stats stats;
 
     std::string error;

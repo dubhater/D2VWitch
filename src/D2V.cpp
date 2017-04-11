@@ -136,6 +136,14 @@ bool D2V::printSettings() {
 
     // No AVOption for framerate?
     AVRational frame_rate = video_stream->codec->framerate;
+    if (frame_rate.num <= 0 || frame_rate.den <= 0) {
+        if (guessed_frame_rate.num > 0 && guessed_frame_rate.den > 0) {
+            frame_rate = guessed_frame_rate;
+        } else {
+            frame_rate.num = 42;
+            frame_rate.den = 1;
+        }
+    }
 
     std::string settings;
 
@@ -359,6 +367,27 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
         }
     }
 
+    // Try to guess the frame rate from the pts. We use it if ffmpeg reports a nonsense frame rate.
+    if (guessed_frame_rate.num == 0 || guessed_frame_rate.den == 0) {
+        if (previous_pts == AV_NOPTS_VALUE) {
+            previous_pts = f->parser->pts;
+        } else {
+            AVRational duration = { (int)(f->parser->pts - previous_pts), 1 };
+
+            if (duration.num > 0) {
+                AVRational timebase = f->fctx->streams[packet->stream_index]->time_base;
+
+                AVRational frame_rate = av_inv_q(av_mul_q(duration, timebase));
+
+                if (frame_rate.num > 0 && frame_rate.den > 0 && av_q2d(frame_rate) < 130) {
+                    av_reduce(&guessed_frame_rate.num, &guessed_frame_rate.den,
+                              frame_rate.num, frame_rate.den,
+                              INT64_MAX);
+                }
+            }
+        }
+    }
+
     line.pictures.push_back(picture);
 
     return true;
@@ -450,6 +479,8 @@ D2V::D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap
     , progress_data(_progress_data)
     , log_message(_log_message)
     , log_data(_log_data)
+    , previous_pts(AV_NOPTS_VALUE)
+    , guessed_frame_rate({ 0, 0 })
 { }
 
 
