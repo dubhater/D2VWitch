@@ -671,15 +671,17 @@ GUIWindow::GUIWindow(QWidget *parent)
         unsigned lavc = avcodec_version();
         unsigned lavu = avutil_version();
 
+        QMessageBox msgbox;
+
+        msgbox.setText(QStringLiteral("<a href='https://github.com/dubhater/D2VWitch'>https://github.com/dubhater/D2VWitch</a>"));
+
         QString about = QStringLiteral(
-            "<a href='https://github.com/dubhater/D2VWitch'>https://github.com/dubhater/D2VWitch</a><br />"
-            "<br />"
-            "Copyright (c) 2016, John Smith<br />"
-            "<br />"
+            "Copyright (c) 2016, John Smith\n"
+            "\n"
             "Permission to use, copy, modify, and/or distribute this software for "
             "any purpose with or without fee is hereby granted, provided that the "
-            "above copyright notice and this permission notice appear in all copies.<br />"
-            "<br />"
+            "above copyright notice and this permission notice appear in all copies.\n"
+            "\n"
             "THE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL "
             "WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED "
             "WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR "
@@ -687,21 +689,21 @@ GUIWindow::GUIWindow(QWidget *parent)
             "OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, "
             "WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, "
             "ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS "
-            "SOFTWARE.<br />"
-            "<br />"
-            "D2V Witch version: %1<br />"
-            "libavformat version: %2.%3.%4<br />"
-            "libavcodec version: %5.%6.%7<br />"
-            "libavutil version: %8.%9.%10<br />"
-            "<br />"
-            "libavformat configuration:<br />"
-            "%11<br />"
-            "<br />"
-            "libavcodec configuration:<br />"
-            "%12<br />"
-            "<br />"
-            "libavutil configuration:<br />"
-            "%13<br />"
+            "SOFTWARE.\n"
+            "\n"
+            "D2V Witch version: %1\n"
+            "libavformat version: %2.%3.%4\n"
+            "libavcodec version: %5.%6.%7\n"
+            "libavutil version: %8.%9.%10\n"
+            "\n"
+            "libavformat configuration:\n"
+            "%11\n"
+            "\n"
+            "libavcodec configuration:\n"
+            "%12\n"
+            "\n"
+            "libavutil configuration:\n"
+            "%13\n"
         );
         about = about.arg(PACKAGE_VERSION);
         about = about.arg((lavf >> 16) & 0xff).arg((lavf >> 8) & 0xff).arg(lavf & 0xff);
@@ -711,7 +713,15 @@ GUIWindow::GUIWindow(QWidget *parent)
         about = about.arg(avcodec_configuration());
         about = about.arg(avutil_configuration());
 
-        QMessageBox::about(this, QStringLiteral("About D2V Witch"), about);
+        msgbox.setDetailedText(about);
+
+        msgbox.setWindowTitle(QStringLiteral("About D2V Witch"));
+
+        msgbox.setStandardButtons(QMessageBox::Ok);
+        msgbox.setDefaultButton(QMessageBox::Ok);
+        msgbox.setEscapeButton(QMessageBox::Ok);
+
+        msgbox.exec();
     });
 
     connect(aboutqt_action, &QAction::triggered, [this] () {
