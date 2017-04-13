@@ -1,3 +1,34 @@
+v3 (tbd)
+========
+
+* Add support for H264 in transport streams and elementary streams.
+  d2vsource v2.0 or newer is needed.
+
+* Fix incorrectly reported codec type ("unknown") with some newer
+  ffmpeg versions. This may break compilation with older ffmpeg
+  versions.
+
+* Hopefully fix the freezing of the graphical interface in Windows
+  when clicking "Add files" or "Browse".
+
+* Avoid leaving behind empty files when the audio decoders can't be
+  opened.
+
+* Skip undecodable leading non-keyframes.
+
+* Skip leading B frames in MPEG2 if the first GOP is open.
+
+* Fix incorrect flagging of some MPEG2 closed GOPs as open.
+
+* Fix incorrect flagging of leading B frames in closed GOPs in MPEG2
+  streams.
+
+* If the colormatrix is undefined, guess it from the resolution.
+
+* Include the pixel format in the output of ``--info``.
+
+
+
 v2 (20161209)
 =============
 
