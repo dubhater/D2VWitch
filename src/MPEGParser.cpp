@@ -88,6 +88,7 @@ void d2vWitchParseMPEG12Data(AVCodecParserContext *parser, AVCodecContext *avctx
 
     int sequence_header = 0;
     int group_of_pictures_header = 0;
+    int closed_gop = 0;
 
 
     const uint8_t *data_end = data + data_size;
@@ -104,6 +105,9 @@ void d2vWitchParseMPEG12Data(AVCodecParserContext *parser, AVCodecContext *avctx
                 parser->pict_type = (data[1] >> 3) & 7;
 
                 parser->key_frame = (parser->pict_type == AV_PICTURE_TYPE_I && sequence_header) || group_of_pictures_header;
+
+                if (closed_gop)
+                    parser->key_frame |= 1 << 16;
             }
         } else if (start_code == SEQUENCE_HEADER_CODE) {
             if (bytes_left >= 3) {
@@ -171,6 +175,7 @@ void d2vWitchParseMPEG12Data(AVCodecParserContext *parser, AVCodecContext *avctx
         } else if (start_code == GROUP_START_CODE) {
             if (bytes_left >= 4) {
                 group_of_pictures_header = 1;
+                closed_gop = data[3] & (1 << 6);
             }
         } else if (start_code == 0xffffffff ||
                    (start_code >= SLICE_START_CODE_MIN && start_code <= SLICE_START_CODE_MAX)) {

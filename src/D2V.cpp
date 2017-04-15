@@ -221,8 +221,11 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
         return true;
     }
 
-    if (!lines.size() &&
-        !line.pictures.size() &&
+    bool first_gop = lines.size() == 0;
+    bool first_picture = line.pictures.size() == 0;
+
+    if (first_gop &&
+        first_picture &&
         !f->parser->key_frame) {
         if (log_message)
             log_message("Skipping leading non-keyframe.", log_data);
@@ -230,10 +233,13 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
         return true;
     }
 
-    if (!lines.size() &&
+    bool mpeg12 = codec_id == AV_CODEC_ID_MPEG1VIDEO || codec_id == AV_CODEC_ID_MPEG2VIDEO;
+
+    if (mpeg12 &&
+        first_gop &&
+        !(line.info & INFO_CLOSED_GOP) &&
         line.pictures.size() == 1 &&
-        f->parser->pict_type == AV_PICTURE_TYPE_B &&
-        (f->parser->output_picture_number < line.pictures[0].output_picture_number || codec_id == AV_CODEC_ID_MPEG1VIDEO || codec_id == AV_CODEC_ID_MPEG2VIDEO)) {
+        f->parser->pict_type == AV_PICTURE_TYPE_B) {
         if (log_message)
             log_message("Skipping leading B frame. It's probably unusable.", log_data);
 
@@ -252,6 +258,10 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
 
         line.info = INFO_BIT11 | INFO_STARTS_NEW_GOP;
 
+        // More evil shit for passing through "closed_gop". MPEG2 only.
+        if (f->parser->key_frame >> 16)
+            line.info |= INFO_CLOSED_GOP;
+
         int64_t colorspace;
         if (av_opt_get_int(f->avctx, "colorspace", 0, &colorspace) < 0)
             colorspace = AVCOL_SPC_UNSPECIFIED;
@@ -265,19 +275,43 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
             progress_report(packet->pos, fake_file->getTotalSize(), progress_data);
     }
 
-    if (f->parser->pict_type == AV_PICTURE_TYPE_I)
+    if (f->parser->pict_type == AV_PICTURE_TYPE_I) {
         picture.flags |= FLAGS_I_PICTURE;
-    else if (f->parser->pict_type == AV_PICTURE_TYPE_P)
+
+        if (mpeg12)
+            picture.flags |= FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
+    } else if (f->parser->pict_type == AV_PICTURE_TYPE_P) {
         picture.flags |= FLAGS_P_PICTURE;
-    else if (f->parser->pict_type == AV_PICTURE_TYPE_B)
+
+        if (mpeg12)
+            picture.flags |= FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
+    } else if (f->parser->pict_type == AV_PICTURE_TYPE_B) {
         picture.flags |= FLAGS_B_PICTURE;
-    else {
+
+        if (mpeg12) {
+            if (line.info & INFO_CLOSED_GOP) {
+                picture.flags |= FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
+            } else {
+                int reference_pictures = 0;
+
+                for (auto it = line.pictures.cbegin(); it != line.pictures.cend(); it++) {
+                    uint8_t frame_type = it->flags & FLAGS_B_PICTURE;
+
+                    if (frame_type == FLAGS_I_PICTURE || frame_type == FLAGS_P_PICTURE)
+                        reference_pictures++;
+                }
+
+                if (reference_pictures >= 2)
+                    picture.flags |= FLAGS_DECODABLE_WITHOUT_PREVIOUS_GOP;
+            }
+        }
+    } else {
         if (log_message)
             log_message(std::string("Encountered unknown picture type ") + av_get_picture_type_char((AVPictureType)f->parser->pict_type) + " (" + std::to_string(f->parser->pict_type) + ").", log_data);
     }
 
 
-    if (codec_id == AV_CODEC_ID_MPEG1VIDEO || codec_id == AV_CODEC_ID_MPEG2VIDEO) {
+    if (mpeg12) {
         // Frame double or tripling can only happen in sequences marked progressive.
         if (f->parser->repeat_pict == 3 || f->parser->repeat_pict == 5)
             line.info |= INFO_PROGRESSIVE_SEQUENCE;
