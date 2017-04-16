@@ -271,8 +271,14 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
             line.info |= INFO_CLOSED_GOP;
 
         int64_t colorspace;
-        if (av_opt_get_int(f->avctx, "colorspace", 0, &colorspace) < 0)
-            colorspace = AVCOL_SPC_UNSPECIFIED;
+        if (av_opt_get_int(f->avctx, "colorspace", 0, &colorspace) < 0 ||
+            colorspace == AVCOL_SPC_UNSPECIFIED ||
+            colorspace == AVCOL_SPC_RESERVED) {
+            if (f->parser->width > 720 || f->parser->height > 576)
+                colorspace = AVCOL_SPC_BT709;
+            else
+                colorspace = AVCOL_SPC_BT470BG;
+        }
         line.matrix = colorspace;
 
         line.position = packet->pos;
