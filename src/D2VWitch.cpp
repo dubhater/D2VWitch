@@ -28,6 +28,7 @@ extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/opt.h>
+#include <libavutil/pixdesc.h>
 }
 
 
@@ -168,11 +169,16 @@ void printInfo(const AVFormatContext *fctx, const FakeFile &fake_file) {
             if (av_opt_get_image_size(fctx->streams[i]->codec, "video_size", 0, &width, &height) < 0)
                 width = height = -1;
 
-            fprintf(stderr, "    Id: %x, type: %s, %dx%d\n",
+            const char *pixel_format = av_get_pix_fmt_name(fctx->streams[i]->codec->pix_fmt);
+            if (!pixel_format)
+                pixel_format = "unknown";
+
+            fprintf(stderr, "    Id: %x, type: %s, %dx%d, %s\n",
                     fctx->streams[i]->id,
                     type,
                     width,
-                    height);
+                    height,
+                    pixel_format);
         }
     }
 
