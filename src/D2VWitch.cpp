@@ -424,19 +424,30 @@ int main(int argc, char **_argv) {
     avcodec_register_all();
 
 
-    QApplication app(argc, _argv);
-    QStringList arguments = QApplication::arguments();
+#if !defined(Q_OS_WIN) && !defined(Q_OS_DARWIN)
+#define PROBABLY_USES_X_OR_WAYLAND 1
+#endif
 
-    if (arguments.size() == 1) {
-        app.setOrganizationName("d2vwitch");
-        app.setApplicationName("d2vwitch");
 
-        GUIWindow w;
+#ifdef PROBABLY_USES_X_OR_WAYLAND
+    if (getenv("DISPLAY") || getenv("WAYLAND_DISPLAY")) {
+#endif
+        QApplication app(argc, _argv);
+        QStringList arguments = QApplication::arguments();
 
-        w.show();
+        if (arguments.size() == 1) {
+            app.setOrganizationName("d2vwitch");
+            app.setApplicationName("d2vwitch");
 
-        return app.exec();
+            GUIWindow w;
+
+            w.show();
+
+            return app.exec();
+        }
+#ifdef PROBABLY_USES_X_OR_WAYLAND
     }
+#endif
 
 #ifdef _WIN32
     AttachConsole(ATTACH_PARENT_PROCESS);
