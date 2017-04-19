@@ -119,6 +119,11 @@ Options:
         video's input colour range. Possible values are "limited" and
         "full". By default, the video is assumed to have limited range.
 
+    --ffmpeg-log-level <level>
+        Control how much of ffmpeg's messages will be printed. Possible
+        values: 'quiet', 'panic', 'fatal', 'error', 'warning', 'info',
+        'verbose', 'debug', and 'trace'. The default is 'panic'.
+
 )usage";
 
     fprintf(stderr, "%s", usage);
@@ -234,6 +239,8 @@ struct CommandLine {
 
     D2V::ColourRange input_range;
 
+    int ffmpeg_log_level;
+
     std::string error;
 
     CommandLine()
@@ -247,6 +254,7 @@ struct CommandLine {
         , video_id(0)
         , have_video_id(false)
         , input_range(D2V::ColourRangeLimited)
+        , ffmpeg_log_level(AV_LOG_PANIC)
         , error{ }
     { }
 
@@ -265,6 +273,7 @@ struct CommandLine {
         const char *opt_audio_ids = "--audio-ids";
         const char *opt_video_id = "--video-id";
         const char *opt_input_range = "--input-range";
+        const char *opt_ffmpeg_log_level = "--ffmpeg-log-level";
 
         std::unordered_set<std::string> valid_options = {
             opt_help,
@@ -274,7 +283,8 @@ struct CommandLine {
             opt_output,
             opt_audio_ids,
             opt_video_id,
-            opt_input_range
+            opt_input_range,
+            opt_ffmpeg_log_level,
         };
 
         for (int i = 1; i < argc; i++) {
@@ -387,6 +397,32 @@ struct CommandLine {
                     error = std::string("Input range '") + argv[i + 1] + "' is neither 'limited' nor 'full'.";
                     return false;
                 }
+            } else if (arg == opt_ffmpeg_log_level) {
+                if (i == argc - 1 || valid_options.count(argv[i + 1])) {
+                    error = opt_ffmpeg_log_level;
+                    error += " requires one of 'quiet', 'panic', 'fatal', 'error', 'warning', 'info', 'verbose', 'debug', or 'trace'.";
+                    return false;
+                }
+
+                std::unordered_map<std::string, int> log_map = {
+                    { "quiet",      AV_LOG_QUIET },
+                    { "panic",      AV_LOG_PANIC },
+                    { "fatal",      AV_LOG_FATAL },
+                    { "error",      AV_LOG_ERROR },
+                    { "warning",    AV_LOG_WARNING },
+                    { "info",       AV_LOG_INFO },
+                    { "verbose",    AV_LOG_VERBOSE },
+                    { "debug",      AV_LOG_DEBUG },
+                    { "trace",      AV_LOG_TRACE }
+                };
+
+                try {
+                    ffmpeg_log_level = log_map.at(argv[i + 1]);
+                    i++;
+                } catch (std::out_of_range &) {
+                    error = std::string("FFMPEG log level '") + argv[i + 1] + "' is not one of 'quiet', 'panic', 'fatal', 'error', 'warning', 'info', 'verbose', 'debug', or 'trace'.";
+                    return false;
+                }
             } else { // Input files.
                 std::string err;
                 makeAbsolute(arg, err);
@@ -424,12 +460,6 @@ static BOOL WINAPI HandlerRoutine(DWORD dwCtrlType) {
 
 
 int main(int argc, char **_argv) {
-    // ffmpeg init part 0
-    av_log_set_level(AV_LOG_PANIC);
-    av_register_all();
-    avcodec_register_all();
-
-
 #if !defined(Q_OS_WIN) && !defined(Q_OS_DARWIN)
 #define PROBABLY_USES_X_OR_WAYLAND 1
 #endif
@@ -442,6 +472,11 @@ int main(int argc, char **_argv) {
         QStringList arguments = QApplication::arguments();
 
         if (arguments.size() == 1) {
+            // ffmpeg init part 0
+            av_log_set_level(AV_LOG_PANIC);
+            av_register_all();
+            avcodec_register_all();
+
             app.setOrganizationName("d2vwitch");
             app.setApplicationName("d2vwitch");
 
@@ -498,6 +533,12 @@ int main(int argc, char **_argv) {
         printVersions();
         return 0;
     }
+
+
+    // ffmpeg init part 0
+    av_log_set_level(cmd.ffmpeg_log_level);
+    av_register_all();
+    avcodec_register_all();
 
 
     // input opening

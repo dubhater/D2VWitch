@@ -76,6 +76,11 @@ parts of the video can still be done even if they are not found.
             video's input colour range. Possible values are "limited" and
             "full". By default, the video is assumed to have limited range.
 
+        --ffmpeg-log-level <level>
+            Control how much of ffmpeg's messages will be printed. Possible
+            values: 'quiet', 'panic', 'fatal', 'error', 'warning', 'info',
+            'verbose', 'debug', and 'trace'. The default is 'panic'.
+
 
 Compilation
 ===========
