@@ -921,7 +921,7 @@ int D2V::getNumFrames() {
 int D2V::getStreamType(const char *name) {
     std::unordered_map<std::string, int> stream_types_map = {
         { "mpegvideo",  ELEMENTARY_STREAM },
-        { "h264",       ELEMENTARY_STREAM },
+//        { "h264",       ELEMENTARY_STREAM },
         { "mpeg",       PROGRAM_STREAM },
         { "mpegts",     TRANSPORT_STREAM },
         { "pva",        PVA_STREAM }
@@ -943,7 +943,7 @@ bool D2V::isSupportedVideoCodecID(AVCodecID id) {
     std::unordered_set<int> supported_codec_ids = {
         AV_CODEC_ID_MPEG1VIDEO,
         AV_CODEC_ID_MPEG2VIDEO,
-        AV_CODEC_ID_H264
+//        AV_CODEC_ID_H264
     };
 
     return supported_codec_ids.count(id);

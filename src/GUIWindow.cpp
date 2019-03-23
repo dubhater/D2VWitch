@@ -97,7 +97,7 @@ void GUIWindow::setContainerError(bool error) {
 
     if (error) {
         style_sheet = QStringLiteral("QListWidget { background: red }");
-        tool_tip = QStringLiteral("Unsupported container format. Only raw MPEG 1/2 elementary streams, program streams, transport streams, PVA streams, and H264 elementary streams are supported."); /// this message should be shared with the CLI.
+        tool_tip = QStringLiteral("Unsupported container format. Only raw MPEG 1/2 elementary streams, program streams, transport streams, and PVA streams are supported."); /// this message should be shared with the CLI.
     }
 
     input_list->setStyleSheet(style_sheet);
@@ -133,7 +133,7 @@ void GUIWindow::setVideoError(QRadioButton *button, bool error) {
 
     if (error) {
         style_sheet = QStringLiteral("QRadioButton { background: red }");
-        tool_tip = QStringLiteral("Unsupported video format. Only MPEG 1, MPEG 2, and H264 are supported."); /// this message should be shared with the CLI.
+        tool_tip = QStringLiteral("Unsupported video format. Only MPEG 1 and MPEG 2 are supported."); /// this message should be shared with the CLI.
     }
 
     button->setStyleSheet(style_sheet);

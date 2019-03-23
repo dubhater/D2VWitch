@@ -14,15 +14,11 @@ Supported container formats:
 
 * PVA streams.
 
-* H264 elementary streams
-
 Supported video codecs:
 
 * MPEG 1
 
 * MPEG 2
-
-* H264
 
 The executable is both a console application and a graphical one. The
 graphical interface is shown if the command line parameters passed

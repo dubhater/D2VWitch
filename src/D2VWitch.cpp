@@ -77,10 +77,9 @@ D2V Witch indexes various streams and writes D2V files. These can
 be used with the VapourSynth plugin d2vsource.
 
 Supported container formats: MPEG elementary streams, MPEG program
-streams, MPEG transport streams, PVA streams, H264 elementary
-streams.
+streams, MPEG transport streams, PVA streams.
 
-Supported video formats: MPEG 1, MPEG 2, H264.
+Supported video formats: MPEG 1, MPEG 2.
 
 Usage: d2vwitch [options] input_file1 input_file2 ...
 
