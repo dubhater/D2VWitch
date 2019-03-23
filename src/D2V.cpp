@@ -322,6 +322,8 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
     } else {
         if (log_message)
             log_message(std::string("Encountered unknown picture type ") + av_get_picture_type_char((AVPictureType)f->parser->pict_type) + " (" + std::to_string(f->parser->pict_type) + ").", log_data);
+
+        return true;
     }
 
 
