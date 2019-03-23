@@ -34,9 +34,6 @@ SOFTWARE.
 #ifdef _WIN32
 #include <windows.h>
 
-// Because wstring_convert is broken in gcc 5.3.0 (works in gcc 5.1.0).
-//    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>, wchar_t> utf16;
-
 struct UTF16 {
     std::string to_bytes(const std::wstring &wstr) {
         int required_size = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, NULL, 0, NULL, NULL);
