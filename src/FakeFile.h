@@ -35,7 +35,14 @@ struct RealFile {
         : name(_name)
         , stream(nullptr)
         , size(0)
-    { }
+    {
+#ifdef _WIN32
+        // We like native file separators in d2v files.
+        for (size_t i = 0; i < name.size(); i++)
+            if (name[i] == '/')
+                name[i] = '\\';
+#endif
+    }
 };
 
 
