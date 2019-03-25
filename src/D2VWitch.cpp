@@ -377,6 +377,8 @@ struct CommandLine {
                     error = "Video id '" + id + "' is not a valid hexadecimal number.";
                     return false;
                 }
+
+                have_video_id = true;
             } else if (arg == opt_input_range) {
                 if (i == argc - 1 || valid_options.count(argv[i + 1])) {
                     error = opt_input_range;
