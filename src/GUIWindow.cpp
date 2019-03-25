@@ -320,7 +320,7 @@ void GUIWindow::startIndexing() {
 
 
     QThread *worker_thread = new QThread;
-    IndexingWorker *worker = new IndexingWorker(d2v_edit->text(), d2v_file, audio_files, &fake_file, &f, video_stream, (D2V::ColourRange)range_group->checkedId(), this);
+    IndexingWorker *worker = new IndexingWorker(d2v_edit->text(), d2v_file, audio_files, &fake_file, &f, video_stream, (D2V::ColourRange)range_group->checkedId(), use_relative_paths_check->isChecked(), this);
     worker->moveToThread(worker_thread);
 
     connect(worker_thread, &QThread::started, worker, &IndexingWorker::process);
@@ -380,7 +380,7 @@ extern Q_CORE_EXPORT int qt_ntfs_permission_lookup;
 extern std::atomic_bool stop_processing;
 
 
-GUIWindow::GUIWindow(QWidget *parent)
+GUIWindow::GUIWindow(QSettings &_settings, QWidget *parent)
     : QMainWindow(parent)
     , container_okay(false)
     , output_okay(false)
@@ -390,6 +390,7 @@ GUIWindow::GUIWindow(QWidget *parent)
     , vscore(nullptr)
     , vsnode(nullptr)
     , vsframe(nullptr)
+    , settings(_settings)
 {
 #ifdef _WIN32
     // Enable slow permissions checking for NTFS.
@@ -413,6 +414,9 @@ GUIWindow::GUIWindow(QWidget *parent)
     QPushButton *remove_button = new QPushButton("&Remove files", this);
     QPushButton *move_up_button = new QPushButton("Move &up", this);
     QPushButton *move_down_button = new QPushButton("Move &down", this);
+    use_relative_paths_check = new QCheckBox("Use relative paths", this);
+    use_relative_paths_check->setChecked(settings.value(KEY_USE_RELATIVE_PATHS, KEY_DEFAULT_USE_RELATIVE_PATHS).toBool());
+    use_relative_paths_check->setToolTip("The paths written in the d2v file will be relative to the location of the d2v file.");
 
     d2v_edit = new QLineEdit(this);
     QPushButton *d2v_button = new QPushButton("&Browse", this);
@@ -585,6 +589,10 @@ GUIWindow::GUIWindow(QWidget *parent)
         inputFilesUpdated();
     });
 
+    connect(use_relative_paths_check, &QCheckBox::toggled, [this] (bool checked) {
+        settings.setValue(KEY_USE_RELATIVE_PATHS, checked);
+    });
+
     connect(d2v_edit, &QLineEdit::textChanged, [this] (const QString &text) {
         for (int i = 0; i < audio_list->count(); i++)
             audio_list->item(i)->setText(text + audio_list->item(i)->data(FileNameSuffix).toString());
@@ -736,6 +744,7 @@ GUIWindow::GUIWindow(QWidget *parent)
     hbox->addWidget(remove_button);
     hbox->addWidget(move_up_button);
     hbox->addWidget(move_down_button);
+    hbox->addWidget(use_relative_paths_check);
     hbox->addStretch(1);
     vbox->addLayout(hbox);
 
@@ -925,7 +934,7 @@ void GUIWindow::demuxingFinished(D2V new_d2v) {
 
 
         QThread *worker_thread = new QThread;
-        IndexingWorker *worker = new IndexingWorker(new_d2v_name, new_d2v_file, D2V::AudioFilesMap(), &demuxed_fake_file, &demuxed_f, video_stream, (D2V::ColourRange)range_group->checkedId(), this);
+        IndexingWorker *worker = new IndexingWorker(new_d2v_name, new_d2v_file, D2V::AudioFilesMap(), &demuxed_fake_file, &demuxed_f, video_stream, (D2V::ColourRange)range_group->checkedId(), use_relative_paths_check->isChecked(), this);
         worker->moveToThread(worker_thread);
 
         connect(worker_thread, &QThread::started, worker, &IndexingWorker::process);
@@ -1219,8 +1228,8 @@ void GUIWindow::enableInterface(bool enable) {
 }
 
 
-IndexingWorker::IndexingWorker(const QString &_d2v_file_name, FILE *_d2v_file, const D2V::AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, D2V::ColourRange _input_range, GUIWindow *_window)
-    : d2v(_d2v_file_name.toStdString(), _d2v_file, _audio_files, _fake_file, _f, _video_stream, _input_range, ::updateProgress, _window, ::logMessage, _window)
+IndexingWorker::IndexingWorker(const QString &_d2v_file_name, FILE *_d2v_file, const D2V::AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, D2V::ColourRange _input_range, bool _use_relative_paths, GUIWindow *_window)
+    : d2v(_d2v_file_name.toStdString(), _d2v_file, _audio_files, _fake_file, _f, _video_stream, _input_range, _use_relative_paths, ::updateProgress, _window, ::logMessage, _window)
 {
 
 }

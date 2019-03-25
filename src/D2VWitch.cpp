@@ -123,6 +123,15 @@ Options:
         values: 'quiet', 'panic', 'fatal', 'error', 'warning', 'info',
         'verbose', 'debug', and 'trace'. The default is 'panic'.
 
+    --relative-paths <yes|no>
+        If 'yes', the paths to the video files written in the d2v file
+        will be relative to the location of the d2v file. If 'no', the
+        paths will be absolute paths. If the name of the d2v file is
+        '-' (standard output), then this option is ignored and the
+        paths will be absolute paths. The default is to use the value
+        stored in the program's configuration file. If no value is
+        stored in the configuration file, then the default is 'no'.
+
 )usage";
 
     fprintf(stderr, "%s", usage);
@@ -240,6 +249,9 @@ struct CommandLine {
 
     int ffmpeg_log_level;
 
+    bool relative_paths;
+    bool have_relative_paths;
+
     std::string error;
 
     CommandLine()
@@ -254,6 +266,8 @@ struct CommandLine {
         , have_video_id(false)
         , input_range(D2V::ColourRangeLimited)
         , ffmpeg_log_level(AV_LOG_PANIC)
+        , relative_paths(KEY_DEFAULT_USE_RELATIVE_PATHS)
+        , have_relative_paths(false)
         , error{ }
     { }
 
@@ -273,6 +287,7 @@ struct CommandLine {
         const char *opt_video_id = "--video-id";
         const char *opt_input_range = "--input-range";
         const char *opt_ffmpeg_log_level = "--ffmpeg-log-level";
+        const char *opt_relative_paths = "--relative-paths";
 
         std::unordered_set<std::string> valid_options = {
             opt_help,
@@ -284,6 +299,7 @@ struct CommandLine {
             opt_video_id,
             opt_input_range,
             opt_ffmpeg_log_level,
+            opt_relative_paths,
         };
 
         for (int i = 1; i < argc; i++) {
@@ -424,6 +440,27 @@ struct CommandLine {
                     error = std::string("FFMPEG log level '") + argv[i + 1] + "' is not one of 'quiet', 'panic', 'fatal', 'error', 'warning', 'info', 'verbose', 'debug', or 'trace'.";
                     return false;
                 }
+            } else if (arg == opt_relative_paths) {
+                if (i == argc - 1 || valid_options.count(argv[i + 1])) {
+                    error = opt_relative_paths;
+                    error += " requires one of 'yes' or 'no'.";
+                    return false;
+                }
+
+                std::unordered_map<std::string, bool> yes_no_map = {
+                    { "yes", true },
+                    { "no", false }
+                };
+
+                try {
+                    relative_paths = yes_no_map.at(argv[i + 1]);
+                    i++;
+                } catch (std::out_of_range &) {
+                    error = std::string("The value of ") + opt_relative_paths + " is neither 'yes' nor 'no'. Instead it is '" + argv[i + 1] + "'.";
+                    return false;
+                }
+
+                have_relative_paths = true;
             } else { // Input files.
                 std::string err;
                 makeAbsolute(arg, err);
@@ -461,6 +498,11 @@ static BOOL WINAPI HandlerRoutine(DWORD dwCtrlType) {
 
 
 int main(int argc, char **_argv) {
+#if !defined(Q_OS_WIN)
+    // Can't put it with the other QSettings below because of the braces.
+    QSettings settings("d2vwitch", "d2vwitch");
+#endif
+
 #if !defined(Q_OS_WIN) && !defined(Q_OS_DARWIN)
 #define PROBABLY_USES_X_OR_WAYLAND 1
 #endif
@@ -472,6 +514,15 @@ int main(int argc, char **_argv) {
         QApplication app(argc, _argv);
         QStringList arguments = QApplication::arguments();
 
+#if defined(Q_OS_WIN)
+        // Must put it here because QApplication::applicationDirPath returns ""
+        // if it's called before a QApplication is created.
+        QString ini_name = QApplication::applicationFilePath();
+        int last_dot = ini_name.lastIndexOf('.');
+        ini_name = ini_name.left(last_dot) + ".ini";
+        QSettings settings(ini_name, QSettings::IniFormat);
+#endif
+
         if (arguments.size() == 1) {
             // ffmpeg init part 0
             av_log_set_level(AV_LOG_PANIC);
@@ -481,7 +532,7 @@ int main(int argc, char **_argv) {
             app.setOrganizationName("d2vwitch");
             app.setApplicationName("d2vwitch");
 
-            GUIWindow w;
+            GUIWindow w(settings);
 
             w.show();
 
@@ -524,6 +575,13 @@ int main(int argc, char **_argv) {
         fprintf(stderr, "%s\n", cmd.getError().c_str());
         return 1;
     }
+
+    if (!cmd.have_relative_paths)
+        cmd.relative_paths = settings.value(KEY_USE_RELATIVE_PATHS, KEY_DEFAULT_USE_RELATIVE_PATHS).toBool();
+
+    if (cmd.relative_paths && cmd.d2v_path == "-")
+        cmd.relative_paths = false;
+
 
     if (cmd.help_wanted) {
         printHelp();
@@ -760,7 +818,7 @@ int main(int argc, char **_argv) {
         logging_func = nullptr;
     }
 
-    D2V d2v(cmd.d2v_path, d2v_file, audio_files, &fake_file, &f, video_stream, cmd.input_range, progress_func, nullptr, logging_func, nullptr);
+    D2V d2v(cmd.d2v_path, d2v_file, audio_files, &fake_file, &f, video_stream, cmd.input_range, cmd.relative_paths, progress_func, nullptr, logging_func, nullptr);
 
     d2v.index();
 

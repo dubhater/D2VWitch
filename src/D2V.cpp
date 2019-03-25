@@ -23,6 +23,8 @@ SOFTWARE.
 #include <cinttypes>
 #include <unordered_set>
 
+#include <QDir>
+
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -78,8 +80,16 @@ bool D2V::printHeader() {
 
     header += std::to_string(fake_file->size()) + "\n";
 
-    for (auto it = fake_file->cbegin(); it != fake_file->cend(); it++)
-        header += it->name + "\n";
+    if (use_relative_paths) {
+        // Maybe replace the Qt stuff with std::filesystem.
+        QDir d2v_dir = QFileInfo(QString::fromStdString(d2v_file_name)).dir();
+
+        for (auto it = fake_file->cbegin(); it != fake_file->cend(); it++)
+            header += d2v_dir.relativeFilePath(QDir::cleanPath(QString::fromStdString(it->name))).toStdString() + "\n";
+    } else {
+        for (auto it = fake_file->cbegin(); it != fake_file->cend(); it++)
+            header += it->name + "\n";
+    }
 
     header += "\n";
 
@@ -475,7 +485,7 @@ D2V::D2V() {
 }
 
 
-D2V::D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, D2V::ColourRange _input_range, ProgressFunction _progress_report, void *_progress_data, LoggingFunction _log_message, void *_log_data)
+D2V::D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, D2V::ColourRange _input_range, bool _use_relative_paths, ProgressFunction _progress_report, void *_progress_data, LoggingFunction _log_message, void *_log_data)
     : d2v_file_name(_d2v_file_name)
     , d2v_file(_d2v_file)
     , audio_files(_audio_files)
@@ -483,6 +493,7 @@ D2V::D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap
     , f(_f)
     , video_stream(_video_stream)
     , input_range(_input_range)
+    , use_relative_paths(_use_relative_paths)
     , progress_report(_progress_report)
     , progress_data(_progress_data)
     , log_message(_log_message)

@@ -79,7 +79,7 @@ public:
 
     D2V();
 
-    D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, ColourRange _input_range, ProgressFunction _progress_report, void *_progress_data, LoggingFunction _log_message, void *_log_data);
+    D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, ColourRange _input_range, bool _use_relative_paths, ProgressFunction _progress_report, void *_progress_data, LoggingFunction _log_message, void *_log_data);
 
     const std::string &getD2VFileName() const;
 
@@ -168,6 +168,7 @@ private:
     FFMPEG *f;
     AVStream *video_stream;
     ColourRange input_range;
+    bool use_relative_paths;
     ProgressFunction progress_report;
     void *progress_data;
     LoggingFunction log_message;

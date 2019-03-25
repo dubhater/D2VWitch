@@ -77,6 +77,15 @@ parts of the video can still be done even if they are not found.
             values: 'quiet', 'panic', 'fatal', 'error', 'warning', 'info',
             'verbose', 'debug', and 'trace'. The default is 'panic'.
 
+        --relative-paths <yes|no>
+            If 'yes', the paths to the video files written in the d2v file
+            will be relative to the location of the d2v file. If 'no', the
+            paths will be absolute paths. If the name of the d2v file is
+            '-' (standard output), then this option is ignored and the
+            paths will be absolute paths. The default is to use the value
+            stored in the program's configuration file. If no value is
+            stored in the configuration file, then the default is 'no'.
+
 
 Compilation
 ===========

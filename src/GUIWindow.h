@@ -31,6 +31,13 @@ SOFTWARE.
 #include "ListWidget.h"
 
 
+// To avoid duplicating the string literals passed to QSettings
+#define KEY_USE_RELATIVE_PATHS                          QStringLiteral("d2v/use_relative_paths")
+
+// The default values to pass to QSettings::value()
+#define KEY_DEFAULT_USE_RELATIVE_PATHS                  false
+
+
 class GUIWindow : public QMainWindow {
     Q_OBJECT
 
@@ -60,9 +67,12 @@ class GUIWindow : public QMainWindow {
 
     D2V d2v;
 
+    QSettings &settings;
+
     // Widgets
 
     ListWidget *input_list;
+    QCheckBox *use_relative_paths_check;
     QLineEdit *d2v_edit;
     QListWidget *video_list;
     QButtonGroup *video_group;
@@ -107,7 +117,7 @@ class GUIWindow : public QMainWindow {
     void enableInterface(bool enable);
 
 public:
-    explicit GUIWindow(QWidget *parent = 0);
+    explicit GUIWindow(QSettings &_settings, QWidget *parent = nullptr);
     ~GUIWindow();
 
 public slots:
@@ -120,7 +130,7 @@ class IndexingWorker : public QObject {
     Q_OBJECT
 
 public:
-    IndexingWorker(const QString &_d2v_file_name, FILE *_d2v_file, const D2V::AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, D2V::ColourRange _input_range, GUIWindow *_window);
+    IndexingWorker(const QString &_d2v_file_name, FILE *_d2v_file, const D2V::AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, D2V::ColourRange _input_range, bool _use_relative_paths, GUIWindow *_window);
 
 public slots:
     void process();
