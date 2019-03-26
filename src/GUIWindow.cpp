@@ -489,6 +489,9 @@ GUIWindow::GUIWindow(QSettings &_settings, QWidget *parent)
     QAction *aboutqt_action = new QAction(QStringLiteral("About &Qt"), this);
 
 
+    statusBar()->addWidget(new QLabel(QStringLiteral("Help the author with a coffee, maybe: <a href=\"https://ko-fi.com/bitterblue\">https://ko-fi.com/bitterblue</a>")));
+
+
     connect(input_list, &ListWidget::deletePressed, remove_button, &QPushButton::click);
 
     connect(add_button, &QPushButton::clicked, [this] () {
