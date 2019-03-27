@@ -91,17 +91,17 @@ public:
 
     void demuxVideo(FILE *video_file, int64_t start_gop_position, int64_t end_gop_position);
 
-    ProcessingResult getResult();
+    ProcessingResult getResult() const;
 
-    int getGOPStartFrame(int frame);
-    int getNextGOPStartFrame(int frame);
+    int getGOPStartFrame(int frame) const;
+    int getNextGOPStartFrame(int frame) const;
 
-    int64_t getGOPStartPosition(int frame);
-    int64_t getNextGOPStartPosition(int frame);
+    int64_t getGOPStartPosition(int frame) const;
+    int64_t getNextGOPStartPosition(int frame) const;
 
-    bool isOpenGOP(int frame);
+    bool isOpenGOP(int frame) const;
 
-    int getNumFrames();
+    int getNumFrames() const;
 
     static int getStreamType(const char *name);
 

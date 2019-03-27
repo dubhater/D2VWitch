@@ -841,13 +841,13 @@ void D2V::demuxVideo(FILE *video_file, int64_t start_gop_position, int64_t end_g
 }
 
 
-D2V::ProcessingResult D2V::getResult() {
+D2V::ProcessingResult D2V::getResult() const {
     return result;
 }
 
 
 // Terribly inefficient but speed is not really important here.
-int D2V::getGOPStartFrame(int frame) {
+int D2V::getGOPStartFrame(int frame) const {
     int total = 0;
 
     for (size_t i = 0; i < lines.size(); i++) {
@@ -861,7 +861,7 @@ int D2V::getGOPStartFrame(int frame) {
 }
 
 
-int D2V::getNextGOPStartFrame(int frame) {
+int D2V::getNextGOPStartFrame(int frame) const {
     int total = 0;
 
     for (size_t i = 0; i < lines.size(); i++) {
@@ -875,7 +875,7 @@ int D2V::getNextGOPStartFrame(int frame) {
 }
 
 
-int64_t D2V::getGOPStartPosition(int frame) {
+int64_t D2V::getGOPStartPosition(int frame) const {
     int total = 0;
 
     for (size_t i = 0; i < lines.size(); i++) {
@@ -889,7 +889,7 @@ int64_t D2V::getGOPStartPosition(int frame) {
 }
 
 
-int64_t D2V::getNextGOPStartPosition(int frame) {
+int64_t D2V::getNextGOPStartPosition(int frame) const {
     int total = 0;
 
     for (size_t i = 0; i < lines.size(); i++) {
@@ -907,7 +907,7 @@ int64_t D2V::getNextGOPStartPosition(int frame) {
 }
 
 
-bool D2V::isOpenGOP(int frame) {
+bool D2V::isOpenGOP(int frame) const {
     int total = 0;
 
     for (size_t i = 0; i < lines.size(); i++) {
@@ -921,7 +921,7 @@ bool D2V::isOpenGOP(int frame) {
 }
 
 
-int D2V::getNumFrames() {
+int D2V::getNumFrames() const {
     int total = 0;
 
     for (size_t i = 0; i < lines.size(); i++)
