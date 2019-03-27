@@ -111,7 +111,6 @@ class GUIWindow : public QMainWindow {
     void setOutputError(bool folder_error, bool empty_d2v);
     void setVideoError(QRadioButton *button, bool error);
     void setAudioError(const std::vector<int> &failed_decoders);
-    bool isSupportedVideoCodecID(AVCodecID id);
     void inputFilesUpdated();
     void startIndexing();
     void startDemuxing();
