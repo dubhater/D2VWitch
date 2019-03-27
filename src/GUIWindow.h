@@ -21,7 +21,19 @@ SOFTWARE.
 #ifndef D2V_WITCH_GUIWINDOW_H
 #define D2V_WITCH_GUIWINDOW_H
 
-#include <QtWidgets>
+#include <QButtonGroup>
+#include <QCheckBox>
+#include <QLabel>
+#include <QLineEdit>
+#include <QMainWindow>
+#include <QPlainTextEdit>
+#include <QProgressBar>
+#include <QPushButton>
+#include <QRadioButton>
+#include <QSpinBox>
+#include <QStackedWidget>
+
+#include <QSettings>
 
 #include <VapourSynth.h>
 

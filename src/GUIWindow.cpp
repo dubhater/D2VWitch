@@ -26,6 +26,20 @@ extern "C" {
 #include <libavutil/pixdesc.h>
 }
 
+#include <QDateTime>
+#include <QFileInfo>
+#include <QLibrary>
+#include <QMimeData>
+#include <QThread>
+
+#include <QFileDialog>
+#include <QGroupBox>
+#include <QMenuBar>
+#include <QMessageBox>
+#include <QStatusBar>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+
 #include "Audio.h"
 #include "Bullshit.h"
 #include "GUIWindow.h"
