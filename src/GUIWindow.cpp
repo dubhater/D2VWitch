@@ -265,6 +265,34 @@ void GUIWindow::inputFilesUpdated() {
 
 
 void GUIWindow::startIndexing() {
+    QStringList existing_files;
+
+    QString file_name = d2v_edit->text();
+
+    if (QFileInfo::exists(file_name))
+        existing_files.push_back(file_name);
+
+    for (int i = 0; i < audio_list->count(); i++) {
+        QListWidgetItem *item = audio_list->item(i);
+
+        if (item->checkState() == Qt::Checked) {
+            file_name = item->text();
+
+            if (QFileInfo::exists(file_name))
+                existing_files.push_back(file_name);
+        }
+    }
+
+    if (existing_files.size()) {
+        QMessageBox::StandardButton button = QMessageBox::warning(this, QStringLiteral("Overwrite output?"), QStringLiteral("The following files already exist. Would you like to overwrite them?\n\n%1").arg(existing_files.join('\n')), QMessageBox::Yes | QMessageBox::No);
+
+        if (button == QMessageBox::No) {
+            enableInterface(true);
+            return;
+        }
+    }
+
+
     f.deselectAllStreams();
 
     int video_index = video_group->checkedId();
@@ -294,7 +322,7 @@ void GUIWindow::startIndexing() {
 
         if (item->checkState() == Qt::Checked) {
             int stream_index = item->data(StreamIndex).toInt();
-            QString file_name = item->text();
+            file_name = item->text();
 
             if (codecIDRequiresWave64(f.fctx->streams[stream_index]->codec->codec_id)) {
                 std::string error;
@@ -360,6 +388,23 @@ void GUIWindow::startDemuxing() {
 
 
     video_file_name = QStringLiteral("%1.%2-%3.m2v").arg(d2v_edit->text()).arg(start_gop_frame).arg(end_gop_frame - 1);
+
+    QStringList existing_files;
+
+    if (QFileInfo::exists(video_file_name))
+        existing_files.push_back(video_file_name);
+
+    if (QFileInfo::exists(video_file_name + ".d2v"))
+        existing_files.push_back(video_file_name + ".d2v");
+
+    if (existing_files.size()) {
+        QMessageBox::StandardButton button = QMessageBox::warning(this, QStringLiteral("Overwrite output?"), QStringLiteral("The following files already exist. Would you like to overwrite them?\n\n%1").arg(existing_files.join('\n')), QMessageBox::Yes | QMessageBox::No);
+
+        if (button == QMessageBox::No) {
+            enableInterface(true);
+            return;
+        }
+    }
 
     video_file = openFile(video_file_name.toUtf8().constData(), "wb");
     if (!video_file) {
@@ -620,7 +665,7 @@ GUIWindow::GUIWindow(QSettings &_settings, QWidget *parent)
     });
 
     connect(d2v_button, &QPushButton::clicked, [this] () {
-        QString file_name = QFileDialog::getSaveFileName(this, "Save d2v file");
+        QString file_name = QFileDialog::getSaveFileName(this, "Save d2v file", QString(), QString(), nullptr, QFileDialog::DontConfirmOverwrite);
 
         if (file_name.isEmpty())
             return;
