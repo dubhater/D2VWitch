@@ -125,14 +125,14 @@ class GUIWindow : public QMainWindow {
     void initialiseVapourSynth();
     void freeVapourSynth();
     void createVapourSynthFilterChain();
-    void dragEnterEvent(QDragEnterEvent *event);
-    void dropEvent(QDropEvent *event);
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
     void enableInterface(bool enable);
     void closeEvent(QCloseEvent *event) override;
 
 public:
     explicit GUIWindow(QSettings &_settings, QWidget *parent = nullptr);
-    ~GUIWindow();
+    ~GUIWindow() override;
 
 public slots:
     void updateProgress(int64_t current_position, int64_t total_size);
