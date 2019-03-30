@@ -39,6 +39,8 @@ extern "C" {
 #endif
 
 #include <QApplication>
+#include <QDir>
+#include <QFileInfo>
 
 
 #ifdef D2VWITCH_STATIC_QT
@@ -131,6 +133,31 @@ Options:
         paths will be absolute paths. The default is to use the value
         stored in the program's configuration file. If no value is
         stored in the configuration file, then the default is 'no'.
+
+    --single-input
+        Index only the one file provided on the command line. Without
+        this parameter, D2V Witch will detect sequences of files
+        called "VTS_xx_y.VOB" and it will index any such files that
+        follow the provided file in the sequence. The detection and
+        sorting are case-insensitive.
+
+        For example, if a folder contains the files vts_01_1.vob,
+        vts_01_2.vob, vts_01_3.vob, vts_02_1.vob, vts_03_1.vob,
+        file1.mpg, and file2.mpg:
+            `d2vwitch vts_01_2.vob` will index vts_01_2.vob and
+                vts_01_3.vob. It will not index vts_01_1.vob because
+                it comes before the file provided in the command. It
+                will not index vts_02_1.vob or vts_03_1.vob because
+                those don't go together with the file provided in the
+                command.
+            `d2vwitch --single-input vts_01_2.vob` will index only
+                vts_01_2.vob because --single-input disables the
+                automatic detection of sequences.
+            `d2vwitch file1.mpg` will index only file1.mpg because the
+                file name doesn't follow the special pattern.
+            `d2vwitch vts_01_1.vob vts_01_2.vob` will index only the
+                files provided in the command, because more than one
+                file was provided.
 
 )usage";
 
@@ -252,6 +279,8 @@ struct CommandLine {
     bool relative_paths;
     bool have_relative_paths;
 
+    bool single_input;
+
     std::string error;
 
     CommandLine()
@@ -268,6 +297,7 @@ struct CommandLine {
         , ffmpeg_log_level(AV_LOG_PANIC)
         , relative_paths(KEY_DEFAULT_USE_RELATIVE_PATHS)
         , have_relative_paths(false)
+        , single_input(false)
         , error{ }
     { }
 
@@ -288,6 +318,7 @@ struct CommandLine {
         const char *opt_input_range = "--input-range";
         const char *opt_ffmpeg_log_level = "--ffmpeg-log-level";
         const char *opt_relative_paths = "--relative-paths";
+        const char *opt_single_input = "--single-input";
 
         std::unordered_set<std::string> valid_options = {
             opt_help,
@@ -300,6 +331,7 @@ struct CommandLine {
             opt_input_range,
             opt_ffmpeg_log_level,
             opt_relative_paths,
+            opt_single_input,
         };
 
         for (int i = 1; i < argc; i++) {
@@ -461,6 +493,8 @@ struct CommandLine {
                 }
 
                 have_relative_paths = true;
+            } else if (arg == opt_single_input) {
+                single_input = true;
             } else { // Input files.
                 std::string err;
                 makeAbsolute(arg, err);
@@ -591,6 +625,30 @@ int main(int argc, char **_argv) {
     if (cmd.version_wanted) {
         printVersions();
         return 0;
+    }
+
+
+    // pick up the files in a VTS_xx_y.VOB sequence
+    if (!cmd.single_input && fake_file.size() == 1) {
+        QFileInfo info(QString::fromStdString(fake_file[0].name));
+
+        QDir input_dir = info.dir();
+
+        QStringList entries = input_dir.entryList(QStringList(QStringLiteral("vts_[0-9][0-9]_[0-9].vob")), QDir::Files, QDir::Name | QDir::IgnoreCase);
+
+        if (entries.size()) {
+            QString name = info.fileName();
+
+            int index = entries.indexOf(name);
+
+            if (index > -1) {
+                for (int i = index + 1; i < entries.size(); i++) {
+                    if (entries[i].midRef(4, 2) == name.midRef(4, 2))
+                        fake_file.push_back(input_dir.absoluteFilePath(entries[i]).toStdString());
+                }
+            }
+        }
+
     }
 
 

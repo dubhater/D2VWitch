@@ -86,6 +86,31 @@ parts of the video can still be done even if they are not found.
             stored in the program's configuration file. If no value is
             stored in the configuration file, then the default is 'no'.
 
+        --single-input
+            Index only the one file provided on the command line. Without
+            this parameter, D2V Witch will detect sequences of files
+            called "VTS_xx_y.VOB" and it will index any such files that
+            follow the provided file in the sequence. The detection and
+            sorting are case-insensitive.
+
+            For example, if a folder contains the files vts_01_1.vob,
+            vts_01_2.vob, vts_01_3.vob, vts_02_1.vob, vts_03_1.vob,
+            file1.mpg, and file2.mpg:
+                `d2vwitch vts_01_2.vob` will index vts_01_2.vob and
+                    vts_01_3.vob. It will not index vts_01_1.vob because
+                    it comes before the file provided in the command. It
+                    will not index vts_02_1.vob or vts_03_1.vob because
+                    those don't go together with the file provided in the
+                    command.
+                `d2vwitch --single-input vts_01_2.vob` will index only
+                    vts_01_2.vob because --single-input disables the
+                    automatic detection of sequences.
+                `d2vwitch file1.mpg` will index only file1.mpg because the
+                    file name doesn't follow the special pattern.
+                `d2vwitch vts_01_1.vob vts_01_2.vob` will index only the
+                    files provided in the command, because more than one
+                    file was provided.
+
 
 Compilation
 ===========
