@@ -741,7 +741,7 @@ GUIWindow::GUIWindow(QSettings &_settings, QWidget *parent)
         unsigned lavc = avcodec_version();
         unsigned lavu = avutil_version();
 
-        QMessageBox msgbox;
+        QMessageBox msgbox(this);
 
         msgbox.setText(QStringLiteral("<a href='https://github.com/dubhater/D2VWitch'>https://github.com/dubhater/D2VWitch</a>"));
 
