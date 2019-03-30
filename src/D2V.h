@@ -208,4 +208,7 @@ private:
 };
 
 
+std::string suggestD2VName(const std::string &video_name);
+std::string suggestAudioTrackSuffix(const AVStream *stream);
+
 #endif // D2V_WITCH_D2V_H

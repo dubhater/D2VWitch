@@ -32,6 +32,7 @@ extern "C" {
 }
 
 #include "Audio.h"
+#include "Bullshit.h"
 #include "D2V.h"
 
 
@@ -960,4 +961,44 @@ bool D2V::isSupportedVideoCodecID(AVCodecID id) {
     };
 
     return supported_codec_ids.count(id);
+}
+
+
+std::string suggestD2VName(const std::string &video_name) {
+    std::string suggestion = video_name;
+
+    size_t last_dot = suggestion.find_last_of('.');
+    if (last_dot == std::string::npos) {
+        suggestion += ".d2v";
+    } else {
+        suggestion.replace(suggestion.cbegin() + last_dot, suggestion.cend(), ".d2v");
+    }
+
+    return suggestion;
+}
+
+
+std::string suggestAudioTrackSuffix(const AVStream *stream) {
+    std::string suggestion = " T";
+
+    char id[20] = { 0 };
+    snprintf(id, 19, "%x", stream->id);
+
+    suggestion += id;
+
+    char channels[512] = { 0 };
+    av_get_channel_layout_string(channels, 512, 0, getChannelLayout(stream->codec));
+    suggestion += " ";
+    suggestion += channels;
+
+    int64_t bit_rate = 0;
+
+    if (av_opt_get_int(stream->codec, "ab", 0, &bit_rate) < 0)
+        bit_rate = 0;
+
+    suggestion += " " + std::to_string(bit_rate / 1000) + " kbps";
+
+    suggestion += std::string(".") + suggestAudioFileExtension(stream->codec->codec_id);
+
+    return suggestion;
 }

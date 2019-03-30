@@ -792,7 +792,7 @@ int main(int argc, char **_argv) {
         d2v_file = stdout;
     } else {
         if (!cmd.d2v_path.size())
-            cmd.d2v_path = fake_file[0].name + ".d2v";
+            cmd.d2v_path = suggestD2VName(fake_file[0].name);
 
         d2v_file = openFile(cmd.d2v_path.c_str(), "wb");
         if (!d2v_file) {
@@ -811,27 +811,15 @@ int main(int argc, char **_argv) {
     for (unsigned i = 0; i < f.fctx->nb_streams; i++) {
         if (f.fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO &&
             f.fctx->streams[i]->discard != AVDISCARD_ALL) {
+
             std::string path = cmd.d2v_path;
 
-            char id[20] = { 0 };
-            snprintf(id, 19, "%x", f.fctx->streams[i]->id);
+            // chop off the extension if it exists
+            size_t last_dot = path.find_last_of('.');
+            if (last_dot != std::string::npos)
+                path.erase(last_dot);
 
-            path += " T";
-            path += id;
-
-            int64_t bit_rate, channel_layout;
-
-            channel_layout = getChannelLayout(f.fctx->streams[i]->codec);
-
-            char channels[512] = { 0 };
-            av_get_channel_layout_string(channels, 512, 0, channel_layout);
-            path += " ";
-            path += channels;
-
-            if (av_opt_get_int(f.fctx->streams[i]->codec, "ab", 0, &bit_rate) >= 0)
-                path += " " + std::to_string(bit_rate / 1000) + " kbps";
-
-            path += std::string(".") + suggestAudioFileExtension(f.fctx->streams[i]->codec->codec_id);
+            path += suggestAudioTrackSuffix(f.fctx->streams[i]);
 
             if (codecIDRequiresWave64(f.fctx->streams[i]->codec->codec_id)) {
                 std::string error;

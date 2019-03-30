@@ -64,6 +64,17 @@ enum DataRoles {
 };
 
 
+static QString removeExtension(const QString &file_name) {
+    QString chopped = file_name;
+
+    int last_dot = chopped.lastIndexOf('.');
+    if (last_dot > -1)
+        chopped.resize(last_dot);
+
+    return chopped;
+};
+
+
 static void updateProgress(int64_t current_position, int64_t total_size, void *data) {
     GUIWindow *window = (GUIWindow *)data;
 
@@ -204,7 +215,7 @@ void GUIWindow::inputFilesUpdated() {
 
     setContainerError(D2V::getStreamType(f.fctx->iformat->name) == D2V::UNSUPPORTED_STREAM);
 
-    d2v_edit->setText(QString::fromStdString(fake_file[0].name + ".d2v"));
+    d2v_edit->setText(QString::fromStdString(suggestD2VName(fake_file[0].name)));
 
     for (unsigned i = 0; i < f.fctx->nb_streams; i++) {
         if (f.fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
@@ -234,22 +245,11 @@ void GUIWindow::inputFilesUpdated() {
             video_group->addButton(track_radio, i);
             video_list->setItemWidget(item, track_radio);
         } else if (f.fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
-            QString suffix = QStringLiteral(" T%1 %2 %3 kbps.%4");
+            QString path = removeExtension(d2v_edit->text());
 
-            char channels[512] = { 0 };
-            int64_t bit_rate = 0;
-            int64_t channel_layout = getChannelLayout(f.fctx->streams[i]->codec);
+            QString suffix = QString::fromStdString(suggestAudioTrackSuffix(f.fctx->streams[i]));
 
-            av_get_channel_layout_string(channels, 512, 0, channel_layout);
-
-            if (av_opt_get_int(f.fctx->streams[i]->codec, "ab", 0, &bit_rate) < 0)
-                bit_rate = 0;
-
-            const char *extension = suggestAudioFileExtension(f.fctx->streams[i]->codec->codec_id);
-
-            suffix = suffix.arg(f.fctx->streams[i]->id, 0, 16).arg(channels).arg(bit_rate / 1000).arg(extension);
-
-            QListWidgetItem *item = new QListWidgetItem(d2v_edit->text() + suffix);
+            QListWidgetItem *item = new QListWidgetItem(path + suffix);
             item->setData(FileNameSuffix, suffix);
             item->setData(StreamIndex, i);
             item->setData(DecoderOpened, f.initAudioCodec(i));
@@ -386,16 +386,17 @@ void GUIWindow::startDemuxing() {
 
     int64_t end_gop_position = d2v.getNextGOPStartPosition(range_end);
 
-
-    video_file_name = QStringLiteral("%1.%2-%3.m2v").arg(d2v_edit->text()).arg(start_gop_frame).arg(end_gop_frame - 1);
+    video_file_name = QStringLiteral("%1.%2-%3.m2v").arg(removeExtension(d2v_edit->text())).arg(start_gop_frame).arg(end_gop_frame - 1);
 
     QStringList existing_files;
 
     if (QFileInfo::exists(video_file_name))
         existing_files.push_back(video_file_name);
 
-    if (QFileInfo::exists(video_file_name + ".d2v"))
-        existing_files.push_back(video_file_name + ".d2v");
+    QString demuxed_d2v = QString::fromStdString(suggestD2VName(video_file_name.toStdString()));
+
+    if (QFileInfo::exists(demuxed_d2v))
+        existing_files.push_back(demuxed_d2v);
 
     if (existing_files.size()) {
         QMessageBox::StandardButton button = QMessageBox::warning(this, QStringLiteral("Overwrite output?"), QStringLiteral("The following files already exist. Would you like to overwrite them?\n\n%1").arg(existing_files.join('\n')), QMessageBox::Yes | QMessageBox::No);
@@ -983,7 +984,7 @@ void GUIWindow::demuxingFinished(D2V new_d2v) {
 
         AVStream *video_stream = demuxed_f.fctx->streams[0];
 
-        QString new_d2v_name = video_file_name + ".d2v";
+        QString new_d2v_name = QString::fromStdString(suggestD2VName(video_file_name.toStdString()));
         FILE *new_d2v_file = openFile(new_d2v_name.toUtf8().constData(), "wb");
         if (!new_d2v_file) {
             errorPopup(QStringLiteral("Failed to open d2v file '%1' for writing: %2").arg(new_d2v_name).arg(strerror(errno)));
