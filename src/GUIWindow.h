@@ -45,6 +45,8 @@ SOFTWARE.
 
 // To avoid duplicating the string literals passed to QSettings
 #define KEY_USE_RELATIVE_PATHS                          QStringLiteral("d2v/use_relative_paths")
+#define KEY_GEOMETRY                                    QStringLiteral("gui/geometry")
+
 
 // The default values to pass to QSettings::value()
 #define KEY_DEFAULT_USE_RELATIVE_PATHS                  false
@@ -126,6 +128,7 @@ class GUIWindow : public QMainWindow {
     void dragEnterEvent(QDragEnterEvent *event);
     void dropEvent(QDropEvent *event);
     void enableInterface(bool enable);
+    void closeEvent(QCloseEvent *event) override;
 
 public:
     explicit GUIWindow(QSettings &_settings, QWidget *parent = nullptr);

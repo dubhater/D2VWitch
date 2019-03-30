@@ -880,6 +880,10 @@ GUIWindow::GUIWindow(QSettings &_settings, QWidget *parent)
     QWidget::setTabOrder(video_frame_spin, video_frame_slider);
 
 
+    if (settings.contains(KEY_GEOMETRY))
+        restoreGeometry(settings.value(KEY_GEOMETRY).toByteArray());
+
+
     initialiseVapourSynth();
 }
 
@@ -1287,6 +1291,13 @@ void GUIWindow::enableInterface(bool enable) {
     container_widget->setEnabled(enable);
     menuBar()->setEnabled(enable);
     start_stop_button->setText(enable ? "&Engage" : "Canc&el");
+}
+
+
+void GUIWindow::closeEvent(QCloseEvent *event) {
+    settings.setValue(KEY_GEOMETRY, saveGeometry());
+
+    QMainWindow::closeEvent(event);
 }
 
 
