@@ -18,8 +18,8 @@ SOFTWARE.
 */
 
 
-#ifndef D2V_WITCH_COMMON_H
-#define D2V_WITCH_COMMON_H
+#ifndef D2V_WITCH_AUDIO_H
+#define D2V_WITCH_AUDIO_H
 
 #include "D2V.h"
 
@@ -32,4 +32,4 @@ const char *suggestAudioFileExtension(AVCodecID codec_id);
 
 int64_t getChannelLayout(AVCodecContext *avctx);
 
-#endif // D2V_WITCH_COMMON_H
+#endif // D2V_WITCH_AUDIO_H
