@@ -254,17 +254,6 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
 
     bool mpeg12 = codec_id == AV_CODEC_ID_MPEG1VIDEO || codec_id == AV_CODEC_ID_MPEG2VIDEO;
 
-    if (mpeg12 &&
-        first_gop &&
-        !(line.info & INFO_CLOSED_GOP) &&
-        line.pictures.size() == 1 &&
-        f->parser->pict_type == AV_PICTURE_TYPE_B) {
-        if (log_message)
-            log_message("Skipping leading B frame. It's probably unusable.", log_data);
-
-        return true;
-    }
-
     picture.output_picture_number = f->parser->output_picture_number;
     picture.picture_structure = f->parser->picture_structure;
 
