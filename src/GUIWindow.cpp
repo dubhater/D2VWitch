@@ -432,11 +432,6 @@ void GUIWindow::startDemuxing() {
 }
 
 
-#ifdef _WIN32
-extern Q_CORE_EXPORT int qt_ntfs_permission_lookup;
-#endif
-
-
 extern std::atomic_bool stop_processing;
 
 
@@ -452,12 +447,6 @@ GUIWindow::GUIWindow(QSettings &_settings, QWidget *parent)
     , vsframe(nullptr)
     , settings(_settings)
 {
-#ifdef _WIN32
-    // Enable slow permissions checking for NTFS.
-    qt_ntfs_permission_lookup++;
-#endif
-
-
     qRegisterMetaType<int64_t>("int64_t");
     qRegisterMetaType<D2V>();
 
