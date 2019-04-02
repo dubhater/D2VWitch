@@ -23,6 +23,8 @@ extern "C" {
 }
 
 #include "Audio.h"
+#include "FFMPEG.h"
+#include "MPEGParser.h"
 
 
 AVFormatContext *openWave64(const std::string &path, const AVCodecContext *in_ctx, std::string &error) {
@@ -91,7 +93,7 @@ AVFormatContext *openWave64(const std::string &path, const AVCodecContext *in_ct
 }
 
 
-void closeAudioFiles(D2V::AudioFilesMap &audio_files, const AVFormatContext *fctx) {
+void closeAudioFiles(AudioFilesMap &audio_files, const AVFormatContext *fctx) {
     for (unsigned i = 0; i < fctx->nb_streams; i++) {
         try {
             void *pointer = audio_files.at(fctx->streams[i]->index);
@@ -132,4 +134,149 @@ int64_t getChannelLayout(AVCodecContext *avctx) {
     }
 
     return channel_layout;
+}
+
+
+bool calculateAudioDelays(FakeFile &fake_file, int video_stream_id, AudioDelayMap &audio_delay_map, int64_t *first_video_keyframe_pos, std::string &error) {
+    const char *error_prefix = "Failed to calculate audio delays: ";
+
+    int64_t original_position = fake_file.getCurrentPosition();
+
+    FakeFile::seek(&fake_file, 0, SEEK_SET);
+
+    FFMPEG f;
+
+    if (!f.initFormat(fake_file)) {
+        error = error_prefix + f.getError();
+
+        f.cleanup();
+        FakeFile::seek(&fake_file, original_position, SEEK_SET);
+
+        return false;
+    }
+
+    int video_stream_index = 0;
+
+    for (unsigned i = 0; i < f.fctx->nb_streams; i++) {
+        if (f.fctx->streams[i]->id == video_stream_id) {
+            video_stream_index = i;
+        } else if (f.fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
+            audio_delay_map[f.fctx->streams[i]->id] = AV_NOPTS_VALUE;
+        }
+    }
+
+    size_t audio_streams_left = audio_delay_map.size();
+
+    // Quit early if there are no audio streams.
+    if (audio_streams_left == 0) {
+        f.cleanup();
+        FakeFile::seek(&fake_file, original_position, SEEK_SET);
+
+        return true;
+    }
+
+    if (!f.initVideoCodec(video_stream_index)) {
+        error = error_prefix + f.getError();
+
+        f.cleanup();
+        FakeFile::seek(&fake_file, original_position, SEEK_SET);
+
+        return false;
+    }
+
+    // Smallest video timestamp found in between (in coded order) the first two keyframes.
+    int64_t first_video_pts = AV_NOPTS_VALUE;
+
+
+    bool second_keyframe_reached = false;
+
+    AVPacket packet;
+    av_init_packet(&packet);
+
+    struct AudioPacketDetails {
+         int64_t pos;
+         int64_t pts;
+    };
+
+    std::unordered_map<int, std::vector<AudioPacketDetails> > audio_packet_details_map;
+
+    // av_read_frame may not return packets from different streams in order (packet.pos always increasing)
+    while ((audio_streams_left != 0 || !second_keyframe_reached) && av_read_frame(f.fctx, &packet) == 0) {
+        if (packet.stream_index == video_stream_index) {
+            AVCodecID codec_id = f.fctx->streams[packet.stream_index]->codec->codec_id;
+
+            if (codec_id == AV_CODEC_ID_H264) {
+                uint8_t *output_buffer; /// free this?
+                int output_buffer_size;
+
+                while (packet.size) {
+                    int parsed_bytes = av_parser_parse2(f.parser, f.avctx, &output_buffer, &output_buffer_size,
+                                                        packet.data, packet.size,
+                                                        packet.pts, packet.dts, packet.pos);
+
+                    packet.data += parsed_bytes;
+                    packet.size -= parsed_bytes;
+                }
+            } else {
+                d2vWitchParseMPEG12Data(f.parser, f.avctx, packet.data, packet.size);
+            }
+
+            if (f.parser->width > 0 && f.parser->height > 0) {
+                if (f.parser->key_frame) {
+                    if (first_video_pts == AV_NOPTS_VALUE) {
+                        first_video_pts = packet.pts;
+                        *first_video_keyframe_pos = packet.pos;
+                    } else {
+                        second_keyframe_reached = true;
+                    }
+                } else if (first_video_pts != AV_NOPTS_VALUE) {
+                    if (packet.pts < first_video_pts && packet.pts != AV_NOPTS_VALUE) {
+                        first_video_pts = packet.pts;
+                    }
+                }
+            }
+        } else {
+            if (f.fctx->streams[packet.stream_index]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
+                int id = f.fctx->streams[packet.stream_index]->id;
+
+                AVRational time_base = f.fctx->streams[packet.stream_index]->time_base;
+                int64_t pts = packet.pts * 1000 * time_base.num / time_base.den;
+
+                if (first_video_pts == AV_NOPTS_VALUE) {
+                    // We haven't reached the first video keyframe yet, so just buffer the audio packet details.
+                    audio_packet_details_map[id].push_back({ packet.pos, pts });
+                } else {
+                    auto latest_packet = audio_packet_details_map[id].crbegin();
+
+                    if (latest_packet != audio_packet_details_map[id].crend() && latest_packet->pos >= *first_video_keyframe_pos) {
+                        if (audio_streams_left > 0)
+                            audio_streams_left--;
+                    } else {
+                        audio_packet_details_map[id].push_back({ packet.pos, pts });
+                    }
+                }
+            }
+        }
+
+        av_free_packet(&packet);
+    }
+
+    AVRational time_base = f.fctx->streams[video_stream_index]->time_base;
+
+    first_video_pts = first_video_pts * 1000 * time_base.num / time_base.den;
+
+    for (auto it = audio_packet_details_map.cbegin(); it != audio_packet_details_map.cend(); it++) {
+        for (size_t i = 0; i < it->second.size(); i++) {
+            if (it->second[i].pos >= *first_video_keyframe_pos) {
+                audio_delay_map[it->first] = it->second[i].pts - first_video_pts;
+                break;
+            }
+        }
+    }
+
+    f.cleanup();
+
+    FakeFile::seek(&fake_file, original_position, SEEK_SET);
+
+    return true;
 }

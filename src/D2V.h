@@ -25,12 +25,14 @@ SOFTWARE.
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 extern "C" {
 #include <libavformat/avformat.h>
 }
 
+#include "Audio.h"
 #include "FakeFile.h"
 #include "FFMPEG.h"
 #include "MPEGParser.h"
@@ -61,7 +63,6 @@ public:
 
     typedef void (*ProgressFunction)(int64_t current_position, int64_t total_size, void *progress_data);
     typedef void (*LoggingFunction)(const std::string &message, void *log_data);
-    typedef std::unordered_map<int, void *> AudioFilesMap;
 
     struct Stats {
         int video_frames;
@@ -79,7 +80,7 @@ public:
 
     D2V();
 
-    D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, ColourRange _input_range, bool _use_relative_paths, ProgressFunction _progress_report, void *_progress_data, LoggingFunction _log_message, void *_log_data);
+    D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, int64_t _first_video_keyframe_pos, ColourRange _input_range, bool _use_relative_paths, ProgressFunction _progress_report, void *_progress_data, LoggingFunction _log_message, void *_log_data);
 
     const std::string &getD2VFileName() const;
 
@@ -179,6 +180,16 @@ private:
     int64_t previous_pts; // For frame rate guessing.
     AVRational guessed_frame_rate;
 
+    // For demuxing only audio packets that follow the first video keyframe.
+    // This value has to be found in advance because av_read_frame may not
+    // return packets from different streams strictly in order. That is, we
+    // might receive a video packet with pos1 and after that an audio packet
+    // with pos2 < pos1.
+    int64_t first_video_keyframe_pos;
+
+    // Key: AVPacket::stream_index
+    std::unordered_set<int> seen_audio_frame_from_these_streams_after_first_video_keyframe;
+
     Stats stats;
 
     std::string error;
@@ -209,6 +220,6 @@ private:
 
 
 std::string suggestD2VName(const std::string &video_name);
-std::string suggestAudioTrackSuffix(const AVStream *stream);
+std::string suggestAudioTrackSuffix(const AVStream *stream, const AudioDelayMap &audio_delay_map);
 
 #endif // D2V_WITCH_D2V_H

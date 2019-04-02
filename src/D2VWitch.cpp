@@ -786,6 +786,23 @@ int main(int argc, char **_argv) {
     }
 
 
+    // calculate the audio delays if needed
+    AudioDelayMap audio_delay_map;
+    int64_t first_video_keyframe_pos = -1;
+    if (cmd.audio_ids.size() || cmd.audio_ids_all) {
+        std::string error;
+
+        if (!calculateAudioDelays(fake_file, video_stream->id, audio_delay_map, &first_video_keyframe_pos, error)) {
+            fprintf(stderr, "%s\n", error.c_str());
+
+            f.cleanup();
+            fake_file.close();
+
+            return 1;
+        }
+    }
+
+
     // d2v file opening
     FILE *d2v_file;
     if (cmd.d2v_path == "-") {
@@ -807,7 +824,7 @@ int main(int argc, char **_argv) {
 
 
     // audio files opening
-    D2V::AudioFilesMap audio_files;
+    AudioFilesMap audio_files;
     for (unsigned i = 0; i < f.fctx->nb_streams; i++) {
         if (f.fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO &&
             f.fctx->streams[i]->discard != AVDISCARD_ALL) {
@@ -819,7 +836,7 @@ int main(int argc, char **_argv) {
             if (last_dot != std::string::npos)
                 path.erase(last_dot);
 
-            path += suggestAudioTrackSuffix(f.fctx->streams[i]);
+            path += suggestAudioTrackSuffix(f.fctx->streams[i], audio_delay_map);
 
             if (codecIDRequiresWave64(f.fctx->streams[i]->codec->codec_id)) {
                 std::string error;
@@ -864,7 +881,7 @@ int main(int argc, char **_argv) {
         logging_func = nullptr;
     }
 
-    D2V d2v(cmd.d2v_path, d2v_file, audio_files, &fake_file, &f, video_stream, cmd.input_range, cmd.relative_paths, progress_func, nullptr, logging_func, nullptr);
+    D2V d2v(cmd.d2v_path, d2v_file, audio_files, &fake_file, &f, video_stream, first_video_keyframe_pos, cmd.input_range, cmd.relative_paths, progress_func, nullptr, logging_func, nullptr);
 
     d2v.index();
 

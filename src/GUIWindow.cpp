@@ -40,7 +40,6 @@ extern "C" {
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 
-#include "Audio.h"
 #include "Bullshit.h"
 #include "GUIWindow.h"
 #include "ScrollArea.h"
@@ -245,12 +244,8 @@ void GUIWindow::inputFilesUpdated() {
             video_group->addButton(track_radio, i);
             video_list->setItemWidget(item, track_radio);
         } else if (f.fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
-            QString path = removeExtension(d2v_edit->text());
-
-            QString suffix = QString::fromStdString(suggestAudioTrackSuffix(f.fctx->streams[i]));
-
-            QListWidgetItem *item = new QListWidgetItem(path + suffix);
-            item->setData(FileNameSuffix, suffix);
+            // The text and suffix are set whenever a video track is selected.
+            QListWidgetItem *item = new QListWidgetItem();
             item->setData(StreamIndex, i);
             item->setData(DecoderOpened, f.initAudioCodec(i));
             item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
@@ -362,7 +357,7 @@ void GUIWindow::startIndexing() {
 
 
     QThread *worker_thread = new QThread;
-    IndexingWorker *worker = new IndexingWorker(d2v_edit->text(), d2v_file, audio_files, &fake_file, &f, video_stream, (D2V::ColourRange)range_group->checkedId(), use_relative_paths_check->isChecked(), this);
+    IndexingWorker *worker = new IndexingWorker(d2v_edit->text(), d2v_file, audio_files, &fake_file, &f, video_stream, first_video_keyframe_pos, (D2V::ColourRange)range_group->checkedId(), use_relative_paths_check->isChecked(), this);
     worker->moveToThread(worker_thread);
 
     connect(worker_thread, &QThread::started, worker, &IndexingWorker::process);
@@ -437,6 +432,7 @@ extern std::atomic_bool stop_processing;
 
 GUIWindow::GUIWindow(QSettings &_settings, QWidget *parent)
     : QMainWindow(parent)
+    , first_video_keyframe_pos(-1)
     , container_okay(false)
     , output_okay(false)
     , video_okay(false)
@@ -664,7 +660,24 @@ GUIWindow::GUIWindow(QSettings &_settings, QWidget *parent)
     });
 
     connect(video_group, static_cast<void (QButtonGroup::*)(int, bool)>(&QButtonGroup::buttonToggled), [this] (int id, bool checked) {
+        // "int id" is the QButtonGroup id, not AVStream::id
+
         if (checked) {
+            AudioDelayMap audio_delay_map;
+            std::string error;
+
+            /// And if it fails somehow?
+            calculateAudioDelays(fake_file, f.fctx->streams[id]->id, audio_delay_map, &first_video_keyframe_pos, error);
+
+            QString path = removeExtension(d2v_edit->text());
+
+            for (int i = 0; i < audio_list->count(); i++) {
+                QListWidgetItem *item = audio_list->item(i);
+                QString suffix = QString::fromStdString(suggestAudioTrackSuffix(f.fctx->streams[item->data(StreamIndex).toInt()], audio_delay_map));
+                item->setText(path + suffix);
+                item->setData(FileNameSuffix, suffix);
+            }
+
             video_okay = D2V::isSupportedVideoCodecID(f.fctx->streams[id]->codec->codec_id) && f.initVideoCodec(id);
             maybeEnableEngageButton();
         }
@@ -990,7 +1003,7 @@ void GUIWindow::demuxingFinished(D2V new_d2v) {
 
 
         QThread *worker_thread = new QThread;
-        IndexingWorker *worker = new IndexingWorker(new_d2v_name, new_d2v_file, D2V::AudioFilesMap(), &demuxed_fake_file, &demuxed_f, video_stream, (D2V::ColourRange)range_group->checkedId(), use_relative_paths_check->isChecked(), this);
+        IndexingWorker *worker = new IndexingWorker(new_d2v_name, new_d2v_file, AudioFilesMap(), &demuxed_fake_file, &demuxed_f, video_stream, first_video_keyframe_pos, (D2V::ColourRange)range_group->checkedId(), use_relative_paths_check->isChecked(), this);
         worker->moveToThread(worker_thread);
 
         connect(worker_thread, &QThread::started, worker, &IndexingWorker::process);
@@ -1291,8 +1304,8 @@ void GUIWindow::closeEvent(QCloseEvent *event) {
 }
 
 
-IndexingWorker::IndexingWorker(const QString &_d2v_file_name, FILE *_d2v_file, const D2V::AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, D2V::ColourRange _input_range, bool _use_relative_paths, GUIWindow *_window)
-    : d2v(_d2v_file_name.toStdString(), _d2v_file, _audio_files, _fake_file, _f, _video_stream, _input_range, _use_relative_paths, ::updateProgress, _window, ::logMessage, _window)
+IndexingWorker::IndexingWorker(const QString &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, int64_t _first_video_keyframe_pos, D2V::ColourRange _input_range, bool _use_relative_paths, GUIWindow *_window)
+    : d2v(_d2v_file_name.toStdString(), _d2v_file, _audio_files, _fake_file, _f, _video_stream, _first_video_keyframe_pos, _input_range, _use_relative_paths, ::updateProgress, _window, ::logMessage, _window)
 {
 
 }

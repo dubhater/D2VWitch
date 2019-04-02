@@ -21,15 +21,31 @@ SOFTWARE.
 #ifndef D2V_WITCH_AUDIO_H
 #define D2V_WITCH_AUDIO_H
 
-#include "D2V.h"
+#include <unordered_map>
+
+extern "C" {
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+}
+
+#include "FakeFile.h"
+
+
+// Key: audio stream index. Value: AVFormatContext* if the stream is LPCM, otherwise FILE*.
+typedef std::unordered_map<int, void *> AudioFilesMap;
+
+// Key: audio stream id. Value: delay in milliseconds.
+typedef std::unordered_map<int, int64_t> AudioDelayMap;
 
 
 AVFormatContext *openWave64(const std::string &path, const AVCodecContext *in_ctx, std::string &error);
 
-void closeAudioFiles(D2V::AudioFilesMap &audio_files, const AVFormatContext *fctx);
+void closeAudioFiles(AudioFilesMap &audio_files, const AVFormatContext *fctx);
 
 const char *suggestAudioFileExtension(AVCodecID codec_id);
 
 int64_t getChannelLayout(AVCodecContext *avctx);
+
+bool calculateAudioDelays(FakeFile &fake_file, int video_stream_id, AudioDelayMap &audio_delay_map, int64_t *first_video_keyframe_pos, std::string &error);
 
 #endif // D2V_WITCH_AUDIO_H

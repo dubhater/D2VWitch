@@ -37,6 +37,7 @@ SOFTWARE.
 
 #include <VapourSynth.h>
 
+#include "Audio.h"
 #include "D2V.h"
 #include "FakeFile.h"
 #include "FFMPEG.h"
@@ -58,12 +59,14 @@ class GUIWindow : public QMainWindow {
     FakeFile fake_file;
     FFMPEG f;
     FILE *d2v_file;
-    D2V::AudioFilesMap audio_files;
+    AudioFilesMap audio_files;
 
     QString video_file_name;
     FILE *video_file;
     FakeFile demuxed_fake_file;
     FFMPEG demuxed_f;
+
+    int64_t first_video_keyframe_pos;
 
 
     bool container_okay;
@@ -144,7 +147,7 @@ class IndexingWorker : public QObject {
     Q_OBJECT
 
 public:
-    IndexingWorker(const QString &_d2v_file_name, FILE *_d2v_file, const D2V::AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, D2V::ColourRange _input_range, bool _use_relative_paths, GUIWindow *_window);
+    IndexingWorker(const QString &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, int64_t _first_video_keyframe_pos, D2V::ColourRange _input_range, bool _use_relative_paths, GUIWindow *_window);
 
 public slots:
     void process();

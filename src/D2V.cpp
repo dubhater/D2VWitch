@@ -403,6 +403,16 @@ bool D2V::handleVideoPacket(AVPacket *packet) {
 
 
 bool D2V::handleAudioPacket(AVPacket *packet) {
+    // We need this per-stream state because many audio packets have pos of -1.
+    if (packet->pos >= first_video_keyframe_pos)
+        seen_audio_frame_from_these_streams_after_first_video_keyframe.insert(packet->stream_index);
+
+    bool seen_audio_frame_from_this_stream_after_first_video_keyframe = seen_audio_frame_from_these_streams_after_first_video_keyframe.count(packet->stream_index);
+
+    if (!seen_audio_frame_from_this_stream_after_first_video_keyframe)
+        return true;
+
+
     if (codecIDRequiresWave64(f->fctx->streams[packet->stream_index]->codec->codec_id)) {
         AVFormatContext *w64_ctx = (AVFormatContext *)audio_files.at(packet->stream_index);
 
@@ -477,7 +487,7 @@ D2V::D2V() {
 }
 
 
-D2V::D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, D2V::ColourRange _input_range, bool _use_relative_paths, ProgressFunction _progress_report, void *_progress_data, LoggingFunction _log_message, void *_log_data)
+D2V::D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap &_audio_files, FakeFile *_fake_file, FFMPEG *_f, AVStream *_video_stream, int64_t _first_video_keyframe_pos, D2V::ColourRange _input_range, bool _use_relative_paths, ProgressFunction _progress_report, void *_progress_data, LoggingFunction _log_message, void *_log_data)
     : d2v_file_name(_d2v_file_name)
     , d2v_file(_d2v_file)
     , audio_files(_audio_files)
@@ -492,6 +502,7 @@ D2V::D2V(const std::string &_d2v_file_name, FILE *_d2v_file, const AudioFilesMap
     , log_data(_log_data)
     , previous_pts(AV_NOPTS_VALUE)
     , guessed_frame_rate({ 0, 0 })
+    , first_video_keyframe_pos(_first_video_keyframe_pos)
 { }
 
 
@@ -969,7 +980,7 @@ std::string suggestD2VName(const std::string &video_name) {
 }
 
 
-std::string suggestAudioTrackSuffix(const AVStream *stream) {
+std::string suggestAudioTrackSuffix(const AVStream *stream, const AudioDelayMap &audio_delay_map) {
     std::string suggestion = " T";
 
     char id[20] = { 0 };
@@ -988,6 +999,8 @@ std::string suggestAudioTrackSuffix(const AVStream *stream) {
         bit_rate = 0;
 
     suggestion += " " + std::to_string(bit_rate / 1000) + " kbps";
+
+    suggestion += " DELAY " + std::to_string(audio_delay_map.at(stream->id)) + " ms";
 
     suggestion += std::string(".") + suggestAudioFileExtension(stream->codec->codec_id);
 
