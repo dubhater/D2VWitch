@@ -424,6 +424,8 @@ bool D2V::handleAudioPacket(AVPacket *packet) {
                 error += id;
                 error += ".";
 
+                av_frame_free(&frame);
+
                 return false;
             }
 
