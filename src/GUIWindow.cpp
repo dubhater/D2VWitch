@@ -647,7 +647,7 @@ GUIWindow::GUIWindow(QSettings &_settings, QWidget *parent)
 
         QFileInfo d2v_info(text);
         QFileInfo dir_info(d2v_info.path());
-        setOutputError(!(dir_info.exists() && dir_info.isDir() && dir_info.isWritable()), (text.isEmpty() || d2v_info.isDir()) && input_list->count());
+        setOutputError(input_list->count() && !(dir_info.exists() && dir_info.isDir() && dir_info.isWritable()), (text.isEmpty() || d2v_info.isDir()) && input_list->count());
     });
 
     connect(d2v_button, &QPushButton::clicked, [this] () {
