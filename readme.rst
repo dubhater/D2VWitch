@@ -124,9 +124,9 @@ The usual steps work::
 Requirements:
     - A C++11 compiler
 
-    - FFmpeg (Libav maybe works too)
+    - FFmpeg 3.4 or newer (Libav maybe works too)
 
-    - Qt 5.2, or maybe newer
+    - Qt 5.2, or maybe newer (5.5.1 works)
 
     - VapourSynth.h
 
