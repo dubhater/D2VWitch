@@ -194,8 +194,10 @@ void FFMPEG::cleanup() {
     deinitVideoCodec();
 
 
-    if (fctx)
+    if (fctx) {
+        avio_context_free(&fctx->pb);
         avformat_close_input(&fctx);
+    }
 
 
     for (auto it = audio_ctx.begin(); it != audio_ctx.end(); it++) {
