@@ -1,5 +1,5 @@
 project('d2vwitch', 'cpp',
-        version: '3',
+        version: '4',
         default_options: ['cpp_std=c++11', 'buildtype=release'],
         meson_version: '>=0.46')
 

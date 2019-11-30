@@ -986,6 +986,17 @@ void GUIWindow::demuxingFinished(D2V new_d2v) {
 
         AVStream *video_stream = demuxed_f.fctx->streams[0];
 
+        if (!demuxed_f.initVideoCodec(video_stream->index)) {
+            errorPopup(demuxed_f.getError());
+
+            enableInterface(true);
+
+            if (!f.seek(0))
+                logMessage(QString::fromStdString(f.getError()));
+
+            return;
+        }
+
         QString new_d2v_name = QString::fromStdString(suggestD2VName(video_file_name.toStdString()));
         FILE *new_d2v_file = openFile(new_d2v_name.toUtf8().constData(), "wb");
         if (!new_d2v_file) {
