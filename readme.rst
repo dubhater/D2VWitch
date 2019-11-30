@@ -121,6 +121,12 @@ The usual steps work::
     ./configure
     make
 
+Alternatively::
+
+    meson build
+    cd build
+    ninja
+
 Requirements:
     - A C++11 compiler
 
