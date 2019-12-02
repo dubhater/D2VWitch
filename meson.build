@@ -56,4 +56,9 @@ cpp_args = [
   warnings
 ]
 
-executable('d2vwitch', sources: sources, dependencies: deps, gui_app: true, cpp_args: cpp_args)
+executable('d2vwitch',
+  sources: sources,
+  dependencies: deps,
+  gui_app: true,
+  cpp_args: cpp_args,
+  install: true)
