@@ -186,7 +186,6 @@ int64_t FakeFile::seek(void *opaque, int64_t offset, int whence) {
 }
 
 
-/// Shouldn't the current position in the fake file advance by bytes_read?
 int FakeFile::readPacket(void *opaque, uint8_t *buf, int bytes_to_read) {
     FakeFile *ff = (FakeFile *)opaque;
 
@@ -218,6 +217,8 @@ int FakeFile::readPacket(void *opaque, uint8_t *buf, int bytes_to_read) {
             bytes_read += bytes_read2;
         }
     }
+
+    ff->current_position += bytes_read;
 
     return (int)bytes_read;
 }
