@@ -1154,6 +1154,34 @@ void GUIWindow::initialiseVapourSynth() {
 #define RESIZE_ID       "com.vapoursynth.resize"
 #define STD_ID          "com.vapoursynth.std"
 
+#if defined(_WIN32)
+    // If d2vsource was not autoloaded, try to load it from alternative locations (PATH and the location of d2vwitch.exe).
+    // Requested by stax76.
+    if (!vsapi->getPluginById(D2VSOURCE_ID, vscore)) {
+        VSPlugin *std_plugin = vsapi->getPluginById(STD_ID, vscore);
+        if (!std_plugin) {
+            logMessage(QStringLiteral("VapourSynth plugin %1 is not loaded" THEREFORE).arg(STD_ID));
+
+            vsapi->freeCore(vscore);
+            vscore = nullptr;
+            vsapi = nullptr;
+            return;
+        }
+
+        VSMap *args = vsapi->createMap();
+        vsapi->propSetData(args, "path", "d2vsource.dll", -1, paReplace);
+        vsapi->propSetInt(args, "altsearchpath", 1, paReplace);
+
+        VSMap *ret = vsapi->invoke(std_plugin, "LoadPlugin", args);
+        vsapi->freeMap(args);
+
+        if (vsapi->getError(ret))
+            logMessage(QStringLiteral("Tried to load d2vsource.dll from PATH and the location of this executable, but it didn't work. Error message: %1").arg(vsapi->getError(ret)));
+
+        vsapi->freeMap(ret);
+    }
+#endif
+
     const char *required_plugins[] = {
         D2VSOURCE_ID,
         RESIZE_ID,
