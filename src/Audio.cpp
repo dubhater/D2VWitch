@@ -18,6 +18,8 @@ SOFTWARE.
 */
 
 
+#include <stdexcept>
+
 extern "C" {
 #include <libavutil/opt.h>
 }
