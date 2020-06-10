@@ -1,3 +1,21 @@
+v4 (20200610)
+=============
+
+* Fix crash when demuxing the video using the graphical interface.
+
+* Fix bad d2v output when calculating the audio delays. This bug
+  probably affected anyone who used the graphical interface whether
+  demuxing audio tracks or not, plus anyone who used the command line
+  interface to demux audio tracks. The result was d2v files with the
+  wrong number of frames and possibly visible decoding errors. This
+  bug was introduced in v3.
+  
+* If d2vsource.dll is not found in VapourSynth's autoload locations,
+  try to load it from PATH and the location of ``d2vwitch.exe``. This
+  is for Windows only.
+
+
+
 v3 (20190404)
 =============
 
