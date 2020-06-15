@@ -80,6 +80,11 @@ static const uint8_t *findStartCode(const uint8_t *data, const uint8_t *data_end
 void d2vWitchParseMPEG12Data(AVCodecParserContext *parser, AVCodecContext *avctx, const uint8_t *data, int data_size) {
     clear(parser, avctx);
 
+    // It seems that when a frame is encoded as two field pictures
+    // av_read_frame returns both pictures in the same packet,
+    // so one packet is counted as one frame in the calling function.
+    // So we pretend to the calling function that we received a frame
+    // picture.
     parser->picture_structure = AV_PICTURE_STRUCTURE_FRAME;
 
     // Maybe not the best idea, but it's really the only thing that needs to be remembered between calls
@@ -141,9 +146,25 @@ void d2vWitchParseMPEG12Data(AVCodecParserContext *parser, AVCodecContext *avctx
                     }
                 } else if (extension_type == PICTURE_CODING_EXTENSION) {
                     if (bytes_left >= 5) {
+                        int picture_structure = data[2] & 3;
                         int top_field_first = data[3] & (1 << 7);
                         int repeat_first_field = data[3] & (1 << 1);
                         int progressive_frame = data[4] & (1 << 7);
+
+                        if (picture_structure != AV_PICTURE_STRUCTURE_FRAME) {
+                            // When the picture is a field picture,
+                            // top_field_first has to be always 0,
+                            // and the field order is determined by
+                            // which field appears first in the stream.
+
+                            // This code here only ever looks at the
+                            // first picture in the pair.
+
+                            // When picture_structure is not "Frame",
+                            // progressive_frame has to be 0, thankfully.
+
+                            top_field_first = picture_structure == AV_PICTURE_STRUCTURE_TOP_FIELD;
+                        }
 
                         parser->repeat_pict = 1;
 
@@ -179,6 +200,9 @@ void d2vWitchParseMPEG12Data(AVCodecParserContext *parser, AVCodecContext *avctx
             }
         } else if (start_code == 0xffffffff ||
                    (start_code >= SLICE_START_CODE_MIN && start_code <= SLICE_START_CODE_MAX)) {
+            // Even if we received two field pictures in this packet,
+            // we only need to look at the first picture. We can skip
+            // the second one.
             break;
         }
     }
