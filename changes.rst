@@ -1,3 +1,14 @@
+v5 (20201112)
+=============
+
+* Fix field order detection of frames coded as fields. The field order
+  of frames coded as two field pictures was always detected as bottom
+  field first. The top_field_first bit is actually not applicable to
+  field pictures. Instead, use the order in which the field pictures
+  appear in the stream. Bug present since v1.
+
+
+
 v4 (20200610)
 =============
 
