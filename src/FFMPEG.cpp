@@ -233,20 +233,22 @@ AVStream *FFMPEG::selectFirstVideoStream() {
 }
 
 
-bool FFMPEG::selectAudioStreamsById(std::vector<int> &audio_ids) {
-    for (unsigned i = 0; i < fctx->nb_streams; i++) {
-        if (fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
-            for (size_t j = 0; j < audio_ids.size(); j++) {
-                if (fctx->streams[i]->id == audio_ids[j]) {
+bool FFMPEG::selectAudioStreamsById(const std::vector<int> &audio_ids, std::vector<int> &missing_audio_ids) {
+    missing_audio_ids = audio_ids;
+
+    for (int j = missing_audio_ids.size() - 1; j >= 0; j--) {
+        for (unsigned i = 0; i < fctx->nb_streams; i++) {
+            if (fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
+                if (fctx->streams[i]->id == missing_audio_ids[j]) {
                     fctx->streams[i]->discard = AVDISCARD_DEFAULT;
-                    audio_ids.erase(audio_ids.begin() + j);
+                    missing_audio_ids.erase((missing_audio_ids.begin() + j));
                     break;
                 }
             }
         }
     }
 
-    return !audio_ids.size();
+    return !missing_audio_ids.size();
 }
 
 

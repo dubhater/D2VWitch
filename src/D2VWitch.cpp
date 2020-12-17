@@ -730,9 +730,11 @@ int main(int argc, char **_argv) {
     }
 
     if (cmd.audio_ids.size()) {
-        if (!f.selectAudioStreamsById(cmd.audio_ids)) {
-            for (size_t i = 0; i < cmd.audio_ids.size(); i++)
-                fprintf(stderr, "Couldn't find audio track with id %x.\n", cmd.audio_ids[i]);
+        std::vector<int> missing_audio_ids;
+
+        if (!f.selectAudioStreamsById(cmd.audio_ids, missing_audio_ids)) {
+            for (size_t i = 0; i < missing_audio_ids.size(); i++)
+                fprintf(stderr, "Couldn't find audio track with id %x.\n", missing_audio_ids[i]);
 
             f.cleanup();
             fake_file.close();

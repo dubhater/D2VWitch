@@ -66,7 +66,7 @@ public:
 
     AVStream *selectFirstVideoStream();
 
-    bool selectAudioStreamsById(std::vector<int> &audio_ids);
+    bool selectAudioStreamsById(const std::vector<int> &audio_ids, std::vector<int> &missing_audio_ids);
 
     bool selectAllAudioStreams();
 
