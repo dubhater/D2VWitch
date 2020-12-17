@@ -60,6 +60,13 @@ bool FFMPEG::initFormat(FakeFile &fake_file) {
         return false;
     }
 
+    // These two are both needed in order to properly detect the
+    // details of the audio streams from a certain DVD.
+    // Values obtained by trial and error. Increase them if needed.
+    // They add a bit of delay, but what can you do?
+    fctx->probesize = 10 * 1000 * 1000; // bytes
+    fctx->max_analyze_duration = 20 * 1000 * 1000; // microseconds
+
     int ret = avformat_open_input(&fctx, fake_file[0].name.c_str(), nullptr, nullptr);
     if (ret < 0) {
         error = "avformat_open_input() failed: ";
