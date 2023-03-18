@@ -10,7 +10,7 @@ deps = [
   dependency('libavcodec'),
   dependency('libavformat'),
   dependency('libavutil'),
-  dependency('qt5', modules: ['Core', 'GUI', 'Widgets'])
+  dependency('qt5', modules: ['Core', 'Gui', 'Widgets'])
 ]
 
 moc_headers = [
