@@ -42,7 +42,7 @@ class FFMPEG {
 
 public:
     AVFormatContext *fctx;
-    AVCodec *avcodec;
+    const AVCodec *avcodec;
     AVCodecContext *avctx;
     AVCodecParserContext *parser;
     std::unordered_map<int, AVCodecContext *> audio_ctx;

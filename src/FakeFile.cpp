@@ -220,5 +220,9 @@ int FakeFile::readPacket(void *opaque, uint8_t *buf, int bytes_to_read) {
 
     ff->current_position += bytes_read;
 
-    return (int)bytes_read;
+    if (bytes_read > 0) {
+        return (int)bytes_read;
+    }
+
+    return AVERROR_EOF;
 }

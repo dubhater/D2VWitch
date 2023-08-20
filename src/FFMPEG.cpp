@@ -47,7 +47,7 @@ bool FFMPEG::initFormat(FakeFile &fake_file) {
         return false;
     }
 
-    size_t io_buffer_size = 32 * 1024;
+    size_t io_buffer_size = 128 * 2048;
     io_buffer = (uint8_t *)av_malloc(io_buffer_size);
     if (!io_buffer) {
         error = "Couldn't allocate " + std::to_string(io_buffer_size) + " bytes for the AVIOContext.";
@@ -103,7 +103,7 @@ bool FFMPEG::initVideoCodec(int stream_index) {
 
     deinitVideoCodec();
 
-    AVCodecID video_codec_id = fctx->streams[stream_index]->codec->codec_id;
+    AVCodecID video_codec_id = fctx->streams[stream_index]->codecpar->codec_id;
 
     avcodec = avcodec_find_decoder(video_codec_id);
     if (!avcodec) {
@@ -118,7 +118,7 @@ bool FFMPEG::initVideoCodec(int stream_index) {
         return false;
     }
 
-    if (avcodec_copy_context(avctx, fctx->streams[stream_index]->codec) < 0) {
+    if (avcodec_parameters_to_context(avctx, fctx->streams[stream_index]->codecpar) < 0) {
         error = "Couldn't copy video codec parameters.";
         return false;
     }
@@ -142,22 +142,22 @@ bool FFMPEG::initVideoCodec(int stream_index) {
 
 
 bool FFMPEG::initAudioCodec(int stream_index) {
-    if (codecIDRequiresWave64(fctx->streams[stream_index]->codec->codec_id)) {
+    if (codecIDRequiresWave64(fctx->streams[stream_index]->codecpar->codec_id)) {
         AVCodecContext *ctx = avcodec_alloc_context3(nullptr);
         if (!ctx) {
             error = "Couldn't allocate AVCodecContext for an audio decoder.";
             return false;
         }
 
-        if (avcodec_copy_context(ctx, fctx->streams[stream_index]->codec) < 0) {
+        if (avcodec_parameters_to_context(ctx, fctx->streams[stream_index]->codecpar) < 0) {
             error = "Couldn't copy AVCodecContext for an audio decoder.";
             return false;
         }
 
-        AVCodec *audio_decoder = avcodec_find_decoder(fctx->streams[stream_index]->codec->codec_id);
+        const AVCodec *audio_decoder = avcodec_find_decoder(fctx->streams[stream_index]->codecpar->codec_id);
         if (!audio_decoder) {
             error = "Couldn't find decoder for ";
-            error += avcodec_get_name(fctx->streams[stream_index]->codec->codec_id);
+            error += avcodec_get_name(fctx->streams[stream_index]->codecpar->codec_id);
             return false;
         }
 
@@ -216,7 +216,7 @@ void FFMPEG::cleanup() {
 
 AVStream *FFMPEG::selectVideoStreamById(int id) {
     for (unsigned i = 0; i < fctx->nb_streams; i++) {
-        if (fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
+        if (fctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
             if (fctx->streams[i]->id == id) {
                 fctx->streams[i]->discard = AVDISCARD_DEFAULT;
                 return fctx->streams[i];
@@ -230,7 +230,7 @@ AVStream *FFMPEG::selectVideoStreamById(int id) {
 
 AVStream *FFMPEG::selectFirstVideoStream() {
     for (unsigned i = 0; i < fctx->nb_streams; i++) {
-        if (fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
+        if (fctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
             fctx->streams[i]->discard = AVDISCARD_DEFAULT;
             return fctx->streams[i];
         }
@@ -245,7 +245,7 @@ bool FFMPEG::selectAudioStreamsById(const std::vector<int> &audio_ids, std::vect
 
     for (int j = missing_audio_ids.size() - 1; j >= 0; j--) {
         for (unsigned i = 0; i < fctx->nb_streams; i++) {
-            if (fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
+            if (fctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
                 if (fctx->streams[i]->id == missing_audio_ids[j]) {
                     fctx->streams[i]->discard = AVDISCARD_DEFAULT;
                     missing_audio_ids.erase((missing_audio_ids.begin() + j));
@@ -263,7 +263,7 @@ bool FFMPEG::selectAllAudioStreams() {
     bool okay = false;
 
     for (unsigned i = 0; i < fctx->nb_streams; i++) {
-        if (fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
+        if (fctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
             fctx->streams[i]->discard = AVDISCARD_DEFAULT;
 
             okay = true;

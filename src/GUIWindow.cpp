@@ -217,17 +217,16 @@ void GUIWindow::inputFilesUpdated() {
     d2v_edit->setText(QString::fromStdString(suggestD2VName(fake_file[0].name)));
 
     for (unsigned i = 0; i < f.fctx->nb_streams; i++) {
-        if (f.fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
+        if (f.fctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
             const char *type = "unknown";
-            const AVCodecDescriptor *desc = avcodec_descriptor_get(f.fctx->streams[i]->codec->codec_id);
+            const AVCodecDescriptor *desc = avcodec_descriptor_get(f.fctx->streams[i]->codecpar->codec_id);
             if (desc)
                 type = desc->long_name ? desc->long_name : desc->name;
 
-            int width, height;
-            if (av_opt_get_image_size(f.fctx->streams[i]->codec, "video_size", 0, &width, &height) < 0)
-                width = height = -1;
+            int width = f.fctx->streams[i]->codecpar->width;
+            int height = f.fctx->streams[i]->codecpar->height;
 
-            const char *pixel_format = av_get_pix_fmt_name(f.fctx->streams[i]->codec->pix_fmt);
+            const char *pixel_format = av_get_pix_fmt_name(static_cast<AVPixelFormat>(f.fctx->streams[i]->codecpar->format));
             if (!pixel_format)
                 pixel_format = "unknown";
 
@@ -236,14 +235,12 @@ void GUIWindow::inputFilesUpdated() {
 
             QListWidgetItem *item = new QListWidgetItem;
             item->setData(StreamIndex, i);
-//            item->setData(DecoderOpened, f.initVideoCodec(i));
             video_list->addItem(item);
             QRadioButton *track_radio = new QRadioButton(track_text);
             track_radio->setFocusPolicy(Qt::NoFocus);
-//            setVideoError(track_radio, !D2V::isSupportedVideoCodecID(f.fctx->streams[i]->codec->codec_id));
             video_group->addButton(track_radio, i);
             video_list->setItemWidget(item, track_radio);
-        } else if (f.fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
+        } else if (f.fctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
             // The text and suffix are set whenever a video track is selected.
             QListWidgetItem *item = new QListWidgetItem();
             item->setData(StreamIndex, i);
@@ -319,10 +316,10 @@ void GUIWindow::startIndexing() {
             int stream_index = item->data(StreamIndex).toInt();
             file_name = item->text();
 
-            if (codecIDRequiresWave64(f.fctx->streams[stream_index]->codec->codec_id)) {
+            if (codecIDRequiresWave64(f.fctx->streams[stream_index]->codecpar->codec_id)) {
                 std::string error;
 
-                AVFormatContext *w64_ctx = openWave64(file_name.toStdString(), f.fctx->streams[stream_index]->codec, error);
+                AVFormatContext *w64_ctx = openWave64(file_name.toStdString(), f.fctx->streams[stream_index]->codecpar, error);
                 if (!w64_ctx) {
                     errorPopup(error);
 
@@ -678,7 +675,7 @@ GUIWindow::GUIWindow(QSettings &_settings, QWidget *parent)
                 item->setData(FileNameSuffix, suffix);
             }
 
-            video_okay = D2V::isSupportedVideoCodecID(f.fctx->streams[id]->codec->codec_id) && f.initVideoCodec(id);
+            video_okay = D2V::isSupportedVideoCodecID(f.fctx->streams[id]->codecpar->codec_id) && f.initVideoCodec(id);
             maybeEnableEngageButton();
         }
 
