@@ -199,17 +199,17 @@ void printInfo(const AVFormatContext *fctx, const FakeFile &fake_file) {
     fprintf(stderr, "\nVideo tracks:\n");
 
     for (unsigned i = 0; i < fctx->nb_streams; i++) {
-        if (fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
+        if (fctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
             const char *type = "unknown";
-            const AVCodecDescriptor *desc = avcodec_descriptor_get(fctx->streams[i]->codec->codec_id);
+            const AVCodecDescriptor *desc = avcodec_descriptor_get(fctx->streams[i]->codecpar->codec_id);
             if (desc)
                 type = desc->long_name ? desc->long_name : desc->name;
 
             int width, height;
-            if (av_opt_get_image_size(fctx->streams[i]->codec, "video_size", 0, &width, &height) < 0)
+            if (av_opt_get_image_size(fctx->streams[i]->codecpar, "video_size", 0, &width, &height) < 0)
                 width = height = -1;
 
-            const char *pixel_format = av_get_pix_fmt_name(fctx->streams[i]->codec->pix_fmt);
+            const char *pixel_format = av_get_pix_fmt_name(static_cast<AVPixelFormat>(fctx->streams[i]->codecpar->format));
             if (!pixel_format)
                 pixel_format = "unknown";
 
@@ -225,20 +225,20 @@ void printInfo(const AVFormatContext *fctx, const FakeFile &fake_file) {
     fprintf(stderr, "\nAudio tracks:\n");
 
     for (unsigned i = 0; i < fctx->nb_streams; i++) {
-        if (fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
+        if (fctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
             const char *type = "unknown";
-            const AVCodecDescriptor *desc = avcodec_descriptor_get(fctx->streams[i]->codec->codec_id);
+            const AVCodecDescriptor *desc = avcodec_descriptor_get(fctx->streams[i]->codecpar->codec_id);
             if (desc)
                 type = desc->long_name ? desc->long_name : desc->name;
 
             int64_t bit_rate, channel_layout, sample_rate;
 
-            if (av_opt_get_int(fctx->streams[i]->codec, "ab", 0, &bit_rate) < 0)
+            if (av_opt_get_int(fctx->streams[i]->codecpar, "ab", 0, &bit_rate) < 0)
                 bit_rate = -1;
 
-            channel_layout = getChannelLayout(fctx->streams[i]->codec);
+            channel_layout = getChannelLayout(fctx->streams[i]->codecpar);
 
-            if (av_opt_get_int(fctx->streams[i]->codec, "ar", 0, &sample_rate) < 0)
+            if (av_opt_get_int(fctx->streams[i]->codecpar, "ar", 0, &sample_rate) < 0)
                 sample_rate = -1;
 
             char channels[512] = { 0 };
@@ -560,8 +560,6 @@ int main(int argc, char **_argv) {
         if (arguments.size() == 1) {
             // ffmpeg init part 0
             av_log_set_level(AV_LOG_PANIC);
-            av_register_all();
-            avcodec_register_all();
 
             app.setOrganizationName("d2vwitch");
             app.setApplicationName("d2vwitch");
@@ -654,8 +652,6 @@ int main(int argc, char **_argv) {
 
     // ffmpeg init part 0
     av_log_set_level(cmd.ffmpeg_log_level);
-    av_register_all();
-    avcodec_register_all();
 
 
     // input opening
@@ -753,13 +749,13 @@ int main(int argc, char **_argv) {
     }
 
 
-    if (!D2V::isSupportedVideoCodecID(video_stream->codec->codec_id)) {
+    if (!D2V::isSupportedVideoCodecID(video_stream->codecpar->codec_id)) {
         const char *type = "unknown";
-        const AVCodecDescriptor *desc = avcodec_descriptor_get(video_stream->codec->codec_id);
+        const AVCodecDescriptor *desc = avcodec_descriptor_get(video_stream->codecpar->codec_id);
         if (desc)
             type = desc->long_name ? desc->long_name : desc->name;
 
-        fprintf(stderr, "Unsupported video codec: %s (id: %d)\n", type, video_stream->codec->codec_id);
+        fprintf(stderr, "Unsupported video codec: %s (id: %d)\n", type, video_stream->codecpar->codec_id);
 
         f.cleanup();
         fake_file.close();
@@ -828,7 +824,7 @@ int main(int argc, char **_argv) {
     // audio files opening
     AudioFilesMap audio_files;
     for (unsigned i = 0; i < f.fctx->nb_streams; i++) {
-        if (f.fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO &&
+        if (f.fctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO &&
             f.fctx->streams[i]->discard != AVDISCARD_ALL) {
 
             std::string path = cmd.d2v_path;
@@ -840,10 +836,10 @@ int main(int argc, char **_argv) {
 
             path += suggestAudioTrackSuffix(f.fctx->streams[i], audio_delay_map);
 
-            if (codecIDRequiresWave64(f.fctx->streams[i]->codec->codec_id)) {
+            if (codecIDRequiresWave64(f.fctx->streams[i]->codecpar->codec_id)) {
                 std::string error;
 
-                AVFormatContext *w64_ctx = openWave64(path, f.fctx->streams[i]->codec, error);
+                AVFormatContext *w64_ctx = openWave64(path, f.fctx->streams[i]->codecpar, error);
                 if (!w64_ctx) {
                     fprintf(stderr, "%s\n", error.c_str());
 

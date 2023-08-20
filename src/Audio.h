@@ -38,13 +38,13 @@ typedef std::unordered_map<int, void *> AudioFilesMap;
 typedef std::unordered_map<int, int64_t> AudioDelayMap;
 
 
-AVFormatContext *openWave64(const std::string &path, const AVCodecContext *in_ctx, std::string &error);
+AVFormatContext *openWave64(const std::string &path, const AVCodecParameters *in_par, std::string &error);
 
 void closeAudioFiles(AudioFilesMap &audio_files, const AVFormatContext *fctx);
 
 const char *suggestAudioFileExtension(AVCodecID codec_id);
 
-int64_t getChannelLayout(AVCodecContext *avctx);
+int64_t getChannelLayout(AVCodecParameters *avctx);
 
 bool calculateAudioDelays(FakeFile &fake_file, int video_stream_id, AudioDelayMap &audio_delay_map, int64_t *first_video_keyframe_pos, std::string &error);
 

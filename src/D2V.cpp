@@ -57,7 +57,7 @@ void D2V::reorderDataLineFlags() {
     if (!line.pictures.size())
         return;
 
-    if (video_stream->codec->codec_id == AV_CODEC_ID_H264) {
+    if (video_stream->codecpar->codec_id == AV_CODEC_ID_H264) {
         auto cmp = [] (const Picture &p1, const Picture &p2) -> bool {
             return p1.output_picture_number < p2.output_picture_number;
         };
@@ -77,7 +77,7 @@ bool D2V::printHeader() {
     std::string header;
 
     header += "DGIndexProjectFile";
-    header += std::to_string(video_stream->codec->codec_id == AV_CODEC_ID_H264 ? 42 : 16) + "\n";
+    header += std::to_string(video_stream->codecpar->codec_id == AV_CODEC_ID_H264 ? 42 : 16) + "\n";
 
     header += std::to_string(fake_file->size()) + "\n";
 
@@ -112,7 +112,7 @@ bool D2V::printSettings() {
     if (stream_type == TRANSPORT_STREAM) {
         const AVStream *audio_stream = nullptr;
         for (unsigned i = 0; i < f->fctx->nb_streams; i++) {
-            if (f->fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
+            if (f->fctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
                 audio_stream = f->fctx->streams[i];
                 break;
             }
@@ -126,27 +126,27 @@ bool D2V::printSettings() {
     }
 
     int mpeg_type = 0;
-    if (video_stream->codec->codec_id == AV_CODEC_ID_MPEG1VIDEO)
+    if (video_stream->codecpar->codec_id == AV_CODEC_ID_MPEG1VIDEO)
         mpeg_type = 1;
-    else if (video_stream->codec->codec_id == AV_CODEC_ID_MPEG2VIDEO)
+    else if (video_stream->codecpar->codec_id == AV_CODEC_ID_MPEG2VIDEO)
         mpeg_type = 2;
-    else if (video_stream->codec->codec_id == AV_CODEC_ID_H264)
+    else if (video_stream->codecpar->codec_id == AV_CODEC_ID_H264)
         mpeg_type = 264;
 
     int yuvrgb_scale = input_range == ColourRangeLimited ? 1 : 0;
 
-    int width, height;
-    if (av_opt_get_image_size(video_stream->codec, "video_size", 0, &width, &height) < 0)
-        width = height = -1;
 
-    AVRational sar;
-    if (av_opt_get_q(video_stream->codec, "aspect", 0, &sar) < 0 || sar.num < 1 || sar.den < 1)
-        sar = { 1, 1 };
+    int width = video_stream->codecpar->width;
+    int height = video_stream->codecpar->height;
+
+    AVRational sar = video_stream->codecpar->sample_aspect_ratio;
+    if (sar.num < 1 || sar.den < 1)
+        sar = {1, 1};
+
     AVRational dar = av_mul_q(av_make_q(width, height), sar);
     av_reduce(&dar.num, &dar.den, dar.num, dar.den, 1024);
 
-    // No AVOption for framerate?
-    AVRational frame_rate = video_stream->codec->framerate;
+    AVRational frame_rate = video_stream->avg_frame_rate;
     if (frame_rate.num <= 0 || frame_rate.den <= 0) {
         if (guessed_frame_rate.num > 0 && guessed_frame_rate.den > 0) {
             frame_rate = guessed_frame_rate;
@@ -215,7 +215,7 @@ bool D2V::printDataLine(const D2V::DataLine &data_line) {
 bool D2V::handleVideoPacket(AVPacket *packet) {
     Picture picture = { 0, AV_PICTURE_STRUCTURE_UNKNOWN, 0 };
 
-    AVCodecID codec_id = f->fctx->streams[packet->stream_index]->codec->codec_id;
+    AVCodecID codec_id = f->fctx->streams[packet->stream_index]->codecpar->codec_id;
 
     if (codec_id == AV_CODEC_ID_H264) {
         uint8_t *output_buffer; /// free this?
@@ -413,34 +413,39 @@ bool D2V::handleAudioPacket(AVPacket *packet) {
         return true;
 
 
-    if (codecIDRequiresWave64(f->fctx->streams[packet->stream_index]->codec->codec_id)) {
+    if (codecIDRequiresWave64(f->fctx->streams[packet->stream_index]->codecpar->codec_id)) {
         AVFormatContext *w64_ctx = (AVFormatContext *)audio_files.at(packet->stream_index);
 
-        AVPacket pkt_in = *packet;
+        AVCodecContext *codec = f->audio_ctx.at(packet->stream_index);
 
         AVFrame *frame = av_frame_alloc();
 
-        while (pkt_in.size) {
-            int got_frame = 0;
+        int ret = avcodec_send_packet(codec, packet);
+        if (ret < 0) {
+            char id[20] = { 0 };
+            snprintf(id, 19, "%x", f->fctx->streams[packet->stream_index]->id);
+            error = "Failed to submit audio packet for decoding from stream id ";
+            error += id;
+            error += ".";
 
-            AVCodecContext *codec = f->audio_ctx.at(pkt_in.stream_index);
+            return false;
+        }
 
-            // We ignore got_frame because pcm_bluray and pcm_dvd decoders don't have any delay.
-            int ret = avcodec_decode_audio4(codec, frame, &got_frame, &pkt_in);
+        while (ret >= 0) {
+            ret = avcodec_receive_frame(codec, frame);
             if (ret < 0) {
-                char id[20] = { 0 };
-                snprintf(id, 19, "%x", f->fctx->streams[pkt_in.stream_index]->id);
-                error = "Failed to decode audio packet from stream id ";
-                error += id;
-                error += ".";
+                if (ret != AVERROR_EOF && ret != AVERROR(EAGAIN)) {
+                    char id[20] = { 0 };
+                    snprintf(id, 19, "%x", f->fctx->streams[packet->stream_index]->id);
+                    error = "Failed to decode audio packet from stream id ";
+                    error += id;
+                    error += ".";
 
-                av_frame_free(&frame);
-
-                return false;
+                    av_frame_unref(frame);
+                    return false;
+                }
+                break;
             }
-
-            pkt_in.data += ret;
-            pkt_in.size -= ret;
 
             AVPacket pkt_out;
             av_init_packet(&pkt_out);
@@ -453,7 +458,7 @@ bool D2V::handleAudioPacket(AVPacket *packet) {
             av_write_frame(w64_ctx, &pkt_out);
         };
 
-        av_frame_free(&frame);
+        av_frame_unref(frame);
     } else { // Not PCM, just dump it.
         FILE *file = (FILE *)audio_files.at(packet->stream_index);
 
@@ -541,7 +546,7 @@ void D2V::index() {
         // and also from streams discovered late, probably.
         if (packet.stream_index != video_stream->index &&
             !audio_files.count(packet.stream_index)) {
-            av_free_packet(&packet);
+            av_packet_unref(&packet);
             continue;
         }
 
@@ -553,14 +558,14 @@ void D2V::index() {
             okay = handleAudioPacket(&packet);
 
         if (!okay) {
-            av_free_packet(&packet);
+            av_packet_unref(&packet);
             result = ProcessingError;
             fclose(d2v_file);
             closeAudioFiles(audio_files, f->fctx);
             return;
         }
 
-        av_free_packet(&packet);
+        av_packet_unref(&packet);
     }
 
 
@@ -641,13 +646,13 @@ void D2V::index() {
 
 
         do {
-            av_free_packet(&packet);
+            av_packet_unref(&packet);
             av_read_frame(f2.fctx, &packet);
         } while (f2.fctx->streams[packet.stream_index]->id != video_stream->id);
 
         int64_t position = packet.pos;
 
-        av_free_packet(&packet);
+        av_packet_unref(&packet);
 
         bool invalid_seek_point = position != 0;
 
@@ -667,13 +672,13 @@ void D2V::index() {
 
 
                 do {
-                    av_free_packet(&packet);
+                    av_packet_unref(&packet);
                     av_read_frame(f2.fctx, &packet);
                 } while (f2.fctx->streams[packet.stream_index]->id != video_stream->id);
 
                 position = packet.pos;
 
-                av_free_packet(&packet);
+                av_packet_unref(&packet);
 
                 if (position == target - middle) { // middle is good
                     if (log_message)
@@ -811,10 +816,10 @@ void D2V::demuxVideo(FILE *video_file, int64_t start_gop_position, int64_t end_g
         // and also from streams discovered late, probably.
         if (packet.stream_index != video_stream->index ||
             packet.pos < start_gop_position) {
-            av_free_packet(&packet);
+            av_packet_unref(&packet);
             continue;
         } else if (packet.pos >= end_gop_position) {
-            av_free_packet(&packet);
+            av_packet_unref(&packet);
             break;
         }
 
@@ -830,14 +835,14 @@ void D2V::demuxVideo(FILE *video_file, int64_t start_gop_position, int64_t end_g
 
             result = ProcessingError;
 
-            av_free_packet(&packet);
+            av_packet_unref(&packet);
 
             fclose(video_file);
 
             return;
         }
 
-        av_free_packet(&packet);
+        av_packet_unref(&packet);
     }
 
     fclose(video_file);
@@ -989,20 +994,20 @@ std::string suggestAudioTrackSuffix(const AVStream *stream, const AudioDelayMap 
     suggestion += id;
 
     char channels[512] = { 0 };
-    av_get_channel_layout_string(channels, 512, 0, getChannelLayout(stream->codec));
+    av_get_channel_layout_string(channels, 512, 0, getChannelLayout(stream->codecpar));
     suggestion += " ";
     suggestion += channels;
 
     int64_t bit_rate = 0;
 
-    if (av_opt_get_int(stream->codec, "ab", 0, &bit_rate) < 0)
+    if (stream->codecpar->bit_rate < 0)
         bit_rate = 0;
 
     suggestion += " " + std::to_string(bit_rate / 1000) + " kbps";
 
     suggestion += " DELAY " + std::to_string(audio_delay_map.at(stream->id)) + " ms";
 
-    suggestion += std::string(".") + suggestAudioFileExtension(stream->codec->codec_id);
+    suggestion += std::string(".") + suggestAudioFileExtension(stream->codecpar->codec_id);
 
     return suggestion;
 }

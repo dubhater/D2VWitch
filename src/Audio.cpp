@@ -29,7 +29,7 @@ extern "C" {
 #include "MPEGParser.h"
 
 
-AVFormatContext *openWave64(const std::string &path, const AVCodecContext *in_ctx, std::string &error) {
+AVFormatContext *openWave64(const std::string &path, const AVCodecParameters *in_par, std::string &error) {
 #define ERROR_SIZE 512
     char temp[ERROR_SIZE] = { 0 };
 
@@ -52,9 +52,9 @@ AVFormatContext *openWave64(const std::string &path, const AVCodecContext *in_ct
         return nullptr;
     }
 
-    AVCodecID codec_id = av_get_pcm_codec(in_ctx->sample_fmt, 0);
+    AVCodecID codec_id = av_get_pcm_codec(static_cast<AVSampleFormat>(in_par->format), 0);
 
-    AVCodec *pcm_codec = avcodec_find_encoder(codec_id);
+    const AVCodec *pcm_codec = avcodec_find_encoder(codec_id);
     if (!pcm_codec) {
         error = "Failed to find encoder for codec '" + std::string(avcodec_get_name(codec_id)) + "' (id " + std::to_string(codec_id) + ").";
 
@@ -71,14 +71,41 @@ AVFormatContext *openWave64(const std::string &path, const AVCodecContext *in_ct
         return nullptr;
     }
 
-    AVCodecContext *out_ctx = w64_ctx->streams[0]->codec;
+    AVCodecContext *out_ctx = avcodec_alloc_context3(pcm_codec);
+    if (!out_ctx) {
+        error = "Failed to create new AVCodecContext for audio file '" + path + "'.";
+
+        avformat_free_context(w64_ctx);
+
+        return nullptr;
+    }
+
     out_ctx->codec_type = AVMEDIA_TYPE_AUDIO;
     out_ctx->codec_id = codec_id;
     out_ctx->codec_tag = 0x0001;
-    out_ctx->sample_rate = in_ctx->sample_rate;
-    out_ctx->channels = in_ctx->channels;
-    out_ctx->sample_fmt = in_ctx->sample_fmt;
-    out_ctx->channel_layout = in_ctx->channel_layout;
+    out_ctx->sample_rate = in_par->sample_rate;
+    out_ctx->channels = in_par->channels;
+    out_ctx->sample_fmt = static_cast<AVSampleFormat>(in_par->format);
+    out_ctx->channel_layout = in_par->channel_layout;
+
+    ret = avcodec_open2(out_ctx, pcm_codec, nullptr);
+    if (ret < 0) {
+        error = "Failed to open codec for audio file '" + path + "'";
+
+        avformat_free_context(w64_ctx);
+        avcodec_free_context(&out_ctx);
+
+        return nullptr;
+    }
+    avcodec_parameters_from_context(w64_ctx->streams[0]->codecpar, out_ctx);
+    if (ret < 0) {
+        error = "Failed to copy codec parameters for audio file '" + path + "'";
+
+        avformat_free_context(w64_ctx);
+        avcodec_free_context(&out_ctx);
+
+        return nullptr;
+    }
 
     ret = avformat_write_header(w64_ctx, nullptr);
     if (ret < 0) {
@@ -100,7 +127,7 @@ void closeAudioFiles(AudioFilesMap &audio_files, const AVFormatContext *fctx) {
         try {
             void *pointer = audio_files.at(fctx->streams[i]->index);
 
-            if (codecIDRequiresWave64(fctx->streams[i]->codec->codec_id)) {
+            if (codecIDRequiresWave64(fctx->streams[i]->codecpar->codec_id)) {
                 AVFormatContext *w64_ctx = (AVFormatContext *)pointer;
 
                 av_write_trailer(w64_ctx);
@@ -124,14 +151,11 @@ const char *suggestAudioFileExtension(AVCodecID codec_id) {
 }
 
 
-int64_t getChannelLayout(AVCodecContext *avctx) {
-    int64_t channel_layout = 0;
-
-    av_opt_get_int(avctx, "channel_layout", 0, &channel_layout);
+int64_t getChannelLayout(AVCodecParameters *avpar) {
+    int64_t channel_layout = avpar->channel_layout;
 
     if (channel_layout == 0) {
-        int64_t channels = 0;
-        av_opt_get_int(avctx, "ac", 0, &channels);
+        int64_t channels = avpar->channels;
         channel_layout = av_get_default_channel_layout(channels);
     }
 
@@ -162,7 +186,7 @@ bool calculateAudioDelays(FakeFile &fake_file, int video_stream_id, AudioDelayMa
     for (unsigned i = 0; i < f.fctx->nb_streams; i++) {
         if (f.fctx->streams[i]->id == video_stream_id) {
             video_stream_index = i;
-        } else if (f.fctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
+        } else if (f.fctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
             audio_delay_map[f.fctx->streams[i]->id] = AV_NOPTS_VALUE;
         }
     }
@@ -205,7 +229,7 @@ bool calculateAudioDelays(FakeFile &fake_file, int video_stream_id, AudioDelayMa
     // av_read_frame may not return packets from different streams in order (packet.pos always increasing)
     while ((audio_streams_left != 0 || !second_keyframe_reached) && av_read_frame(f.fctx, &packet) == 0) {
         if (packet.stream_index == video_stream_index) {
-            AVCodecID codec_id = f.fctx->streams[packet.stream_index]->codec->codec_id;
+            AVCodecID codec_id = f.fctx->streams[packet.stream_index]->codecpar->codec_id;
 
             if (codec_id == AV_CODEC_ID_H264) {
                 uint8_t *output_buffer; /// free this?
@@ -238,7 +262,7 @@ bool calculateAudioDelays(FakeFile &fake_file, int video_stream_id, AudioDelayMa
                 }
             }
         } else {
-            if (f.fctx->streams[packet.stream_index]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
+            if (f.fctx->streams[packet.stream_index]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
                 int id = f.fctx->streams[packet.stream_index]->id;
 
                 AVRational time_base = f.fctx->streams[packet.stream_index]->time_base;
@@ -260,7 +284,7 @@ bool calculateAudioDelays(FakeFile &fake_file, int video_stream_id, AudioDelayMa
             }
         }
 
-        av_free_packet(&packet);
+        av_packet_unref(&packet);
     }
 
     AVRational time_base = f.fctx->streams[video_stream_index]->time_base;
